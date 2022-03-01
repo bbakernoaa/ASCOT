@@ -1,4 +1,4 @@
-#!/Users/danieltong/anaconda3/bin/python
+#!/usr/bin/env python
 # """
 #     Dust Detection Algorithm using Hourly EPA AQS/AIRNOW Surface Monitors
 #     Barry D. Baker <Barry.Baker@noaa.gov>
@@ -14,7 +14,7 @@
 # __status__ = "Dev"
 
 # """
-
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 def start_end_duration(df, column='TR4'):
     import pandas as pd
@@ -58,6 +58,7 @@ def dust_algorithm(df, lower_threshold=100., upper_threshold=140.):
     rmax.rename(columns={'PM10': 'PM10_3HR_ROLL_MAX'}, inplace=True)
     wsroll.rename(columns={'WS': 'WS_ROLL'}, inplace=True)
     print('Merging Rolling Windows...')
+    df = df.reset_index(drop=True)
     df = df.merge(
         rmin[['PM10_3HR_ROLL_MIN', 'siteid', 'time_local']],
         on=['siteid', 'time_local'],
@@ -227,8 +228,8 @@ def patch_co(df, col):
 
 
 def get_and_clean(start='2017-01-01', end='2017-01-28', path='.', **kwargs):
-    from monet.obs import aqs as a
-    from monet.util.tools import long_to_wide
+    from monetio.obs import aqs as a
+#    from monetio.util.tools import long_to_wide
     import pandas as pd
     from numpy import NaN
     # import aqs
@@ -282,17 +283,18 @@ def get_and_clean(start='2017-01-01', end='2017-01-28', path='.', **kwargs):
 def get_and_clean_airnow(start='2017-06-01',
                          end='2017-06-28',
                          path='/data/aqf2/barryb/AIRNOW'):
-    from monet.obs import airnow as a
-    from monet.util.tools import long_to_wide
+    from monetio.obs import airnow as a
+#    from monetio.util.tools import long_to_wide
     import os
     import pandas as pd
     from numpy import NaN
     #a = airnow.AirNow()
-    a.monitor_file = 'monitoring_site_locations.hdf'
+#    a.monitor_file = 'monitoring_site_locations.hdf'
     a.datadir = path
+    print(start,end)
     a.dates = pd.date_range(start=start, end=end, freq='H')
-    df = a.add_data(a.dates, download=False)
-    df = long_to_wide(df.copy())
+    df = a.add_data(a.dates, download=False,wide_fmt=True,n_procs=4)
+#    df = long_to_wide(df.copy())
     df.rename(columns={'PM2.5': 'PM25'}, inplace=True)
     # pm10 = a.df.groupby('variable').get_group('PM10')
     # co = a.df.groupby('variable').get_group('CO')
@@ -336,11 +338,18 @@ def get_and_clean_airnow(start='2017-06-01',
 
 def main():
     import sys
+    from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+    parser = ArgumentParser(description='convert nemsio file to netCDF4 file', formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-s', '--start', help='start date; YYYY-MM-DD', type=str, required=True)
+    parser.add_argument('-e', '--end', help='start date; YYYY-MM-DD', type=str, required=True)
+    parser.add_argument('-d', '--data', help='airnow or aqs', type=str, required=False, default='airnow')
+    parser.add_argument('-o', '--output', help='output filename', type=str, required=True)
+    args = parser.parse_args()
     # get data from command line
-    start = sys.argv[1]
-    end = sys.argv[2]
-    data = sys.argv[3]
-    output = sys.argv[4]
+    start = args.start
+    end = args.end
+    data = args.data
+    output = args.output
 
     print('Getting Data...')
     if data.lower() == 'airnow':
@@ -349,7 +358,9 @@ def main():
         df = get_and_clean(start=start, end=end, path='.', download=True)
 
     dust = dust_algorithm(df)
-
+    # G1,G2,G3,T1,T2,T3,G2+WS,T2+WS,G3+WS,T3+WS,DUST,Method,VALUE,START_DATE,DURATION
+    dust = dust.loc[(dust.G1 == True) | (dust.G2 == True) | (dust.G3 == True) | (dust.G1 == True) | (dust.T2 == True) | (dust.T3 == True) | (dust['G2+WS'] == True ) | (dust['T2+WS'] == True) | (dust.DUST == True)]
+    
     dust.to_csv(output, index=None)
 
 
