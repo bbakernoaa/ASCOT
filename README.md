@@ -1,2 +1,2 @@
 # ASCOT
-ARL surface wind blown dust detection alrogithm
+ARL surface wind-blown dust detection algorithm
