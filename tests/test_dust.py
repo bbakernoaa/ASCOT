@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from dust import dust_algorithm
+from dust import dust_algorithm, fill_gaps
 
 
 def create_mock_ds(n_hours=24):
@@ -34,6 +34,26 @@ def create_mock_ds(n_hours=24):
         },
     )
     return ds
+
+
+def test_fill_gaps_eager_vs_lazy():
+    """Verify fill_gaps logic twice: Eager and Lazy."""
+    data = xr.DataArray(
+        [True, False, True, False, False, True, True],
+        dims="time",
+        coords={"time": pd.date_range("2023-01-01", periods=7, freq="h")},
+    )
+
+    # Eager
+    res_eager = fill_gaps(data)
+    expected = [True, True, True, False, False, True, True]
+    np.testing.assert_array_equal(res_eager.values, expected)
+
+    # Lazy
+    data_lazy = data.chunk({"time": 3})
+    res_lazy = fill_gaps(data_lazy)
+    assert hasattr(res_lazy.data, "dask")
+    np.testing.assert_array_equal(res_lazy.compute().values, expected)
 
 
 def test_dust_algorithm_eager_vs_lazy():

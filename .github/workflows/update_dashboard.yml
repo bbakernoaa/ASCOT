@@ -1,0 +1,50 @@
+name: Update Dust Dashboard
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Run daily at midnight
+  workflow_dispatch:      # Allow manual trigger
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgeos-dev libproj-dev
+
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install "pandas<3.0" xarray dask netcdf4 cartopy hvplot geoviews bottleneck panel
+          pip install git+https://github.com/noaa-oar-arl/monetio.git@develop
+
+      - name: Generate Dashboard
+        env:
+          DASHBOARD_DAYS: 30
+        run: |
+          export PYTHONPATH=$PYTHONPATH:.
+          python dashboard.py
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './docs'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

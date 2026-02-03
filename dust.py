@@ -5,9 +5,39 @@ Dust Detection Algorithm using Hourly EPA AQS/AIRNOW Surface Monitors.
 Architected by Aero 🍃⚡
 """
 
+
 import numpy as np
 import pandas as pd
 import xarray as xr
+
+
+def fill_gaps(da: xr.DataArray, dim: str = "time", limit: int = 1) -> xr.DataArray:
+    """
+    Fill 1-hour gaps in a boolean mask.
+
+    Parameters
+    ----------
+    da : xr.DataArray
+        Input boolean mask.
+    dim : str, optional
+        Dimension along which to fill gaps, by default "time".
+    limit : int, optional
+        Maximum gap size to fill, by default 1.
+        (Currently only limit=1 is implemented via shift).
+
+    Returns
+    -------
+    xr.DataArray
+        Boolean mask with filled gaps.
+    """
+    if limit != 1:
+        raise NotImplementedError(
+            "Only limit=1 is currently implemented for fill_gaps."
+        )
+
+    return da | (
+        da.shift({dim: 1}, fill_value=False) & da.shift({dim: -1}, fill_value=False)
+    )
 
 
 def start_end_duration(
@@ -131,11 +161,6 @@ def dust_algorithm(
     t3_ws = t3 & (ws_rmax > ws_threshold)
 
     # 5. Fill 1-hr gaps
-    def fill_gaps(da):
-        return da | (
-            da.shift(time=1, fill_value=False) & da.shift(time=-1, fill_value=False)
-        )
-
     g1 = fill_gaps(g1)
     g2 = fill_gaps(g2)
     g3 = fill_gaps(g3)
@@ -248,7 +273,7 @@ def get_quality(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
-def get_monthly_quantile(ds: xr.Dataset, quantile: float, col: str) -> xr.Dataset:
+def get_monthly_quantile(ds: xr.Dataset, quantile: float, col: str) -> xr.DataArray:
     """
     Calculate monthly quantiles for a variable.
 
@@ -263,8 +288,8 @@ def get_monthly_quantile(ds: xr.Dataset, quantile: float, col: str) -> xr.Datase
 
     Returns
     -------
-    xr.Dataset
-        Dataset with monthly quantiles.
+    xr.DataArray
+        DataArray with monthly quantiles.
     """
     # Group by month and calculate quantile
     return ds[col].groupby("time.month").quantile(quantile)
@@ -322,6 +347,8 @@ def get_and_clean_obs(
         End date, by default "2017-06-02".
     path : str, optional
         Data directory, by default ".".
+    **kwargs
+        Additional arguments passed to monetio.add_data.
 
     Returns
     -------
@@ -341,11 +368,17 @@ def get_and_clean_obs(
     if df.empty:
         raise ValueError(f"No data found for {source} between {start} and {end}")
 
-    # Basic cleaning
-    df.loc[df.obs < 0, "obs"] = np.nan
-
-    # Use monetio's long_to_wide
-    df = util.long_to_wide(df)
+    # Handling both long and wide formats from monetio
+    if "obs" in df.columns:
+        # Basic cleaning for long format
+        df.loc[df.obs < 0, "obs"] = np.nan
+        # Use monetio's long_to_wide
+        df = util.long_to_wide(df)
+    else:
+        # For wide format, clean common variables
+        for col in ["PM10", "PM2.5", "WS", "CO"]:
+            if col in df.columns:
+                df.loc[df[col] < 0, col] = np.nan
 
     # Rename PM2.5 to PM25 for consistency
     if "PM2.5" in df.columns:
@@ -356,8 +389,24 @@ def get_and_clean_obs(
         if "time_local" in df.columns:
             df.rename(columns={"time_local": "time"}, inplace=True)
 
+    # Ensure siteid is present
+    if "siteid" not in df.columns:
+        if "site" in df.columns:
+            df.rename(columns={"site": "siteid"}, inplace=True)
+
     # Groupby siteid and time, then to xarray
+    # Drop duplicates to be safe
+    df = df.drop_duplicates(subset=["time", "siteid"])
     ds = df.set_index(["time", "siteid"]).sort_index().to_xarray()
+
+    # Fix lat/lon to be 1D coordinates of siteid
+    for coord in ["latitude", "longitude"]:
+        if coord in ds.data_vars:
+            # Take the first non-null value for each site
+            # Using first() after groupby siteid
+            # Or just take the mean across time dimension if it's (time, siteid)
+            ds[coord] = ds[coord].mean(dim="time", skipna=True)
+            ds = ds.set_coords(coord)
 
     return ds
 
