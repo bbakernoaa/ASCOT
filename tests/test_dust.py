@@ -1,8 +1,10 @@
+from unittest.mock import patch
+
 import numpy as np
 import pandas as pd
 import xarray as xr
 
-from dust import dust_algorithm, fill_gaps
+from dust import add_met_to_airnow, dust_algorithm, fill_gaps
 
 
 def create_mock_ds(n_hours=24):
@@ -171,3 +173,50 @@ def test_dynamic_threshold():
         ds, lower_threshold=100.0, upper_threshold=70.0, dynamic_threshold=True
     )
     assert ds_dynamic.DUST.any()
+
+
+def test_add_met_to_airnow():
+    """Test supplementation of AirNow data with ISD-Lite met data."""
+    # Create mock AirNow dataset
+    time = pd.date_range("2023-01-01", periods=2, freq="h")
+    ds = xr.Dataset(
+        {"PM10": (("time", "siteid"), [[10], [20]])},
+        coords={
+            "time": time,
+            "siteid": ["site1"],
+            "latitude": (("siteid",), [40.0]),
+            "longitude": (("siteid",), [-100.0]),
+        },
+    )
+    ds = ds.set_coords(["latitude", "longitude"])
+
+    # Mock ish_lite.add_data
+    mock_df_ish = pd.DataFrame(
+        {
+            "time": [time[0], time[1]],
+            "siteid": ["ISD1", "ISD1"],
+            "temp": [20.0, 21.0],
+            "dew_pt_temp": [10.0, 11.0],
+            "ws": [5.0, 6.0],
+        }
+    )
+
+    # Mock ish_lite.ISH.read_ish_history
+    mock_history = pd.DataFrame(
+        {"station_id": ["ISD1"], "latitude": [40.1], "longitude": [-100.1]}
+    )
+
+    with (
+        patch("monetio.obs.ish_lite.add_data", return_value=mock_df_ish),
+        patch("monetio.obs.ish_lite.ISH") as mock_ish_cls,
+    ):
+        mock_ish_inst = mock_ish_cls.return_value
+        mock_ish_inst.read_ish_history.return_value = mock_history
+
+        ds_out = add_met_to_airnow(ds)
+
+        assert "TEMP" in ds_out
+        assert "DEW_PT_TEMP" in ds_out
+        assert "RH" in ds_out
+        assert "WS" in ds_out
+        assert not ds_out.TEMP.isnull().any()
