@@ -5,7 +5,6 @@ Dust Detection Algorithm using Hourly EPA AQS/AIRNOW Surface Monitors.
 Architected by Aero 🍃⚡
 """
 
-
 import numpy as np
 import pandas as pd
 import xarray as xr
