@@ -111,3 +111,61 @@ def test_dust_algorithm_duration_filter():
     # Should be filtered out because duration is 80h > 72h
     assert not res.DUST.sel(siteid="Site1").any()
     assert np.isnan(res.DURATION.sel(siteid="Site1")).all()
+
+def test_dust_algorithm_rh():
+    """Verify RH dependence in dust algorithm."""
+    # Create synthetic dataset
+    time = pd.date_range("2023-01-01", periods=10, freq="h")
+    siteid = ["site1"]
+    ds = xr.Dataset(
+        {
+            "PM10": (("time", "siteid"), np.full((10, 1), 200.0)),
+            "PM25": (("time", "siteid"), np.full((10, 1), 20.0)),
+            "WS": (("time", "siteid"), np.full((10, 1), 10.0)),
+            "RH": (("time", "siteid"), np.full((10, 1), 50.0)), # Above 40
+        },
+        coords={"time": time, "siteid": siteid},
+    )
+
+    # Run algorithm
+    ds_out = dust_algorithm(ds)
+    # Should be False because RH > 40
+    assert not ds_out.DUST.any()
+
+    # Set RH < 40
+    ds["RH"] = (("time", "siteid"), np.full((10, 1), 30.0))
+    ds_out = dust_algorithm(ds)
+    # Should be True
+    assert ds_out.DUST.any()
+
+def test_dynamic_threshold():
+    """Verify dynamic threshold logic in dust algorithm."""
+    # Create synthetic dataset with 40 days of data
+    np.random.seed(42)
+    time = pd.date_range("2023-01-01", periods=24*40, freq="h")
+    siteid = ["site1"]
+    # Mean = 50, Std = 5
+    pm10 = np.random.normal(50, 5, (24*40, 1))
+    pm10 = np.maximum(pm10, 0)
+    # Add a peak at the end that is above dynamic threshold but below 100
+    pm10[-5:] = 80
+
+    ds = xr.Dataset(
+        {
+            "PM10": (("time", "siteid"), pm10),
+            "PM25": (("time", "siteid"), pm10 * 0.1),
+            "WS": (("time", "siteid"), np.full((24*40, 1), 10.0)),
+        },
+        coords={"time": time, "siteid": siteid},
+    )
+
+    # Static threshold 100
+    # Also set upper_threshold lower than our peak (80) so it can trigger
+    ds_static = dust_algorithm(ds, lower_threshold=100.0, upper_threshold=70.0)
+    assert not ds_static.DUST.any()
+
+    # Dynamic threshold
+    ds_dynamic = dust_algorithm(
+        ds, lower_threshold=100.0, upper_threshold=70.0, dynamic_threshold=True
+    )
+    assert ds_dynamic.DUST.any()

@@ -39,6 +39,139 @@ def fill_gaps(da: xr.DataArray, dim: str = "time", limit: int = 1) -> xr.DataArr
     )
 
 
+def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Supplement AirNow dataset with ISD-Lite meteorological data.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Input AirNow dataset.
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset with supplemented meteorological variables.
+    """
+    try:
+        from monetio.obs import ish_lite
+    except ImportError:
+        print("monetio not installed. Cannot add met data.")
+        return ds
+
+    from scipy.spatial import cKDTree
+
+    # Get date range from ds
+    if "time" not in ds.dims:
+        return ds
+
+    dates = pd.to_datetime(ds.time.values)
+    start = dates.min()
+    end = dates.max()
+
+    # Get bounding box
+    latmin = ds.latitude.min().item()
+    latmax = ds.latitude.max().item()
+    lonmin = ds.longitude.min().item()
+    lonmax = ds.longitude.max().item()
+    box = [latmin - 1, lonmin - 1, latmax + 1, lonmax + 1]
+
+    # Fetch ISD-Lite data
+    print(f"Fetching ISD-Lite data for box {box}...")
+    try:
+        # Use a slightly wider date range to ensure coverage
+        ish_dates = pd.date_range(start, end, freq="h")
+        df_ish = ish_lite.add_data(ish_dates, box=box)
+    except Exception as e:
+        print(f"Error fetching ISD-Lite data: {e}")
+        return ds
+
+    if df_ish is None or df_ish.empty:
+        print("No ISD-Lite data found.")
+        return ds
+
+    # Need station locations for ISD-Lite
+    ish_obj = ish_lite.ISH()
+    history = ish_obj.read_ish_history()
+
+    # Filter history to sites in df_ish
+    unique_sites = df_ish.siteid.unique()
+    history = history[history.station_id.isin(unique_sites)]
+
+    if history.empty:
+        print("Could not find station locations in ISD history.")
+        return ds
+
+    # Build KDTree for nearest neighbor
+    ish_coords = history[["latitude", "longitude"]].values
+    tree = cKDTree(ish_coords)
+
+    # For each site in ds, find nearest ISD site
+    if "latitude" not in ds.coords or "longitude" not in ds.coords:
+        print("Missing latitude/longitude in AirNow dataset.")
+        return ds
+
+    airnow_coords = np.column_stack([ds.latitude.values, ds.longitude.values])
+    dist, idx = tree.query(airnow_coords)
+
+    nearest_ish_sites = history.station_id.iloc[idx].values
+
+    # Convert df_ish to xarray
+    df_ish = df_ish.drop_duplicates(subset=["time", "siteid"])
+    ds_ish = df_ish.set_index(["time", "siteid"]).sort_index().to_xarray()
+
+    met_vars = ["temp", "dew_pt_temp", "ws", "press"]
+    met_ds_list = []
+
+    for var in met_vars:
+        if var in ds_ish.data_vars:
+            # Selection for each site
+            var_data = ds_ish[var].sel(siteid=nearest_ish_sites)
+            var_data["siteid"] = ds.siteid
+            met_ds_list.append(
+                var_data.rename(var.upper() if var != "ws" else "WS_MET")
+            )
+
+    if not met_ds_list:
+        return ds
+
+    ds_met = xr.merge(met_ds_list)
+
+    # Reindex time to match AirNow exactly
+    ds_met = ds_met.reindex(time=ds.time, method="nearest")
+
+    # Calculate RH
+    if "TEMP" in ds_met and "DEW_PT_TEMP" in ds_met:
+        t = ds_met.TEMP
+        td = ds_met.DEW_PT_TEMP
+        # August-Roche-Magnus formula
+        rh = 100 * (
+            np.exp((17.625 * td) / (243.04 + td)) / np.exp((17.625 * t) / (243.04 + t))
+        )
+        ds_met["RH"] = rh
+
+    # Merge into original ds
+    if "WS" in ds.data_vars:
+        ds["WS"] = ds["WS"].fillna(ds_met["WS_MET"])
+    else:
+        if "WS_MET" in ds_met:
+            ds["WS"] = ds_met["WS_MET"]
+
+    # Add other met vars
+    for v in ds_met.data_vars:
+        if v not in ds.data_vars:
+            ds[v] = ds_met[v]
+
+    # Provenance
+    history_attr = ds.attrs.get("history", "")
+    now = pd.Timestamp.now()
+    ds.attrs["history"] = (
+        history_attr + f" [{now}] Supplemented met data from ISD-Lite."
+    )
+
+    return ds
+
+
 def start_end_duration(
     ds: xr.Dataset, column: str = "DUST", time_dim: str = "time"
 ) -> xr.Dataset:
@@ -90,6 +223,7 @@ def dust_algorithm(
     ds: xr.Dataset,
     lower_threshold: float = 100.0,
     upper_threshold: float = 140.0,
+    dynamic_threshold: bool = False,
 ) -> xr.Dataset:
     """
     Apply the Dust Detection Algorithm to surface monitor data.
@@ -139,7 +273,17 @@ def dust_algorithm(
     ws_rmax = ws_rmax.bfill(dim="time").ffill(dim="time")
 
     # 3. Setting Thresholds
-    pm10_lower_thr = lower_threshold
+    if dynamic_threshold:
+        # Calculate rolling 30-day mean and std
+        pm10_rolling = ds.PM10.rolling(time=24 * 30, min_periods=1, center=False)
+        pm10_mean = pm10_rolling.mean()
+        pm10_std = pm10_rolling.std()
+        pm10_lower_thr = pm10_mean + 2 * pm10_std
+        # Fill NaN with static threshold if rolling window has no data
+        pm10_lower_thr = pm10_lower_thr.fillna(lower_threshold)
+    else:
+        pm10_lower_thr = lower_threshold
+
     pm10_upper_thr = 180.0
     pm10_98_thr = 85.0
 
@@ -173,6 +317,10 @@ def dust_algorithm(
 
     # 6. Final Dust Product
     dust = t2 | g2 | g2_ws | t2_ws
+
+    # Add RH dependence if available
+    if "RH" in ds.data_vars:
+        dust = dust & (ds.RH < 40.0)
 
     # 7. Method classification
     method = xr.full_like(dust, "NONE", dtype="U10")
@@ -331,6 +479,7 @@ def get_and_clean_obs(
     start: str = "2017-06-01",
     end: str = "2017-06-02",
     path: str = ".",
+    with_met: bool = False,
     **kwargs,
 ) -> xr.Dataset:
     """
@@ -407,6 +556,9 @@ def get_and_clean_obs(
             ds[coord] = ds[coord].mean(dim="time", skipna=True)
             ds = ds.set_coords(coord)
 
+    if with_met:
+        ds = add_met_to_airnow(ds)
+
     return ds
 
 
@@ -423,18 +575,39 @@ def main():
     parser.add_argument("-d", "--data", help="airnow or aqs", default="airnow")
     parser.add_argument("-o", "--output", help="output filename", required=True)
     parser.add_argument("--chunk", help="Chunk by siteid for Dask", action="store_true")
+    parser.add_argument(
+        "--with-met", help="Supplement with ISD-Lite met data", action="store_true"
+    )
+    parser.add_argument(
+        "--dynamic-threshold",
+        help="Use dynamic PM10 threshold (30-day mean + 2sigma)",
+        action="store_true",
+    )
 
     args = parser.parse_args()
 
+    if args.dynamic_threshold:
+        fetch_start = (pd.to_datetime(args.start) - pd.Timedelta(days=30)).strftime(
+            "%Y-%m-%d"
+        )
+        print(f"Dynamic threshold requested. Fetching data from {fetch_start}...")
+    else:
+        fetch_start = args.start
+
     print(f"Fetching {args.data} data...")
-    ds = get_and_clean_obs(source=args.data, start=args.start, end=args.end)
+    ds = get_and_clean_obs(
+        source=args.data, start=fetch_start, end=args.end, with_met=args.with_met
+    )
 
     if args.chunk:
         ds = ds.chunk({"siteid": 100})
         print("Data chunked with Dask.")
 
     print("Running Dust Algorithm...")
-    ds = dust_algorithm(ds)
+    ds = dust_algorithm(ds, dynamic_threshold=args.dynamic_threshold)
+
+    # Subset to requested period for output
+    ds = ds.sel(time=slice(args.start, args.end))
 
     # For output, we might want to convert back to dataframe or save as netCDF
     if args.output.endswith(".csv"):
