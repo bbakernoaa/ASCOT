@@ -54,7 +54,7 @@ def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
         Dataset with supplemented meteorological variables.
     """
     try:
-        from monetio.obs import ish_lite
+        import monetio
     except ImportError:
         print("monetio not installed. Cannot add met data.")
         return ds
@@ -81,29 +81,23 @@ def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
     try:
         # Use a slightly wider date range to ensure coverage
         ish_dates = pd.date_range(start, end, freq="h")
-        df_ish = ish_lite.add_data(ish_dates, box=box)
+        ds_ish = monetio.load("ish_lite", dates=ish_dates, box=box, as_xarray=True)
     except Exception as e:
         print(f"Error fetching ISD-Lite data: {e}")
         return ds
 
-    if df_ish is None or df_ish.empty:
+    if ds_ish is None:
         print("No ISD-Lite data found.")
         return ds
 
-    # Need station locations for ISD-Lite
-    ish_obj = ish_lite.ISH()
-    history = ish_obj.read_ish_history()
-
-    # Filter history to sites in df_ish
-    unique_sites = df_ish.siteid.unique()
-    history = history[history.station_id.isin(unique_sites)]
-
-    if history.empty:
-        print("Could not find station locations in ISD history.")
+    # Build KDTree for nearest neighbor
+    if "latitude" not in ds_ish.coords or "longitude" not in ds_ish.coords:
+        print("ISD-Lite dataset missing latitude/longitude.")
         return ds
 
-    # Build KDTree for nearest neighbor
-    ish_coords = history[["latitude", "longitude"]].values
+    # Extract unique station locations from ds_ish
+    ish_sites = ds_ish.siteid.values
+    ish_coords = np.column_stack([ds_ish.latitude.values, ds_ish.longitude.values])
     tree = cKDTree(ish_coords)
 
     # For each site in ds, find nearest ISD site
@@ -114,11 +108,7 @@ def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
     airnow_coords = np.column_stack([ds.latitude.values, ds.longitude.values])
     dist, idx = tree.query(airnow_coords)
 
-    nearest_ish_sites = history.station_id.iloc[idx].values
-
-    # Convert df_ish to xarray
-    df_ish = df_ish.drop_duplicates(subset=["time", "siteid"])
-    ds_ish = df_ish.set_index(["time", "siteid"]).sort_index().to_xarray()
+    nearest_ish_sites = ish_sites[idx]
 
     met_vars = ["temp", "dew_pt_temp", "ws", "press"]
     met_ds_list = []
@@ -495,66 +485,42 @@ def get_and_clean_obs(
         End date, by default "2017-06-02".
     path : str, optional
         Data directory, by default ".".
+    with_met : bool, optional
+        Whether to supplement with met data, by default False.
     **kwargs
-        Additional arguments passed to monetio.add_data.
+        Additional arguments passed to monetio.load.
 
     Returns
     -------
     xr.Dataset
         Cleaned dataset.
     """
-    import monetio.util as util
-    from monetio.obs import airnow, aqs
+    import monetio
 
     dates = pd.date_range(start=start, end=end, freq="h")
 
     if source.lower() == "airnow":
-        df = airnow.add_data(dates, **kwargs)
+        ds = monetio.load("airnow", dates=dates, as_xarray=True, **kwargs)
     else:
-        df = aqs.add_data(dates, param=["PM10", "WIND", "RHDP", "PM2.5"], **kwargs)
+        ds = monetio.load(
+            "aqs",
+            dates=dates,
+            param=["PM10", "WIND", "RHDP", "PM2.5"],
+            as_xarray=True,
+            **kwargs,
+        )
 
-    if df.empty:
+    if ds is None:
         raise ValueError(f"No data found for {source} between {start} and {end}")
 
-    # Handling both long and wide formats from monetio
-    if "obs" in df.columns:
-        # Basic cleaning for long format
-        df.loc[df.obs < 0, "obs"] = np.nan
-        # Use monetio's long_to_wide
-        df = util.long_to_wide(df)
-    else:
-        # For wide format, clean common variables
-        for col in ["PM10", "PM2.5", "WS", "CO"]:
-            if col in df.columns:
-                df.loc[df[col] < 0, col] = np.nan
+    # Cleaning for xarray
+    for var in ["PM10", "PM2.5", "WS", "CO"]:
+        if var in ds.data_vars:
+            ds[var] = ds[var].where(ds[var] >= 0)
 
     # Rename PM2.5 to PM25 for consistency
-    if "PM2.5" in df.columns:
-        df.rename(columns={"PM2.5": "PM25"}, inplace=True)
-
-    # Convert to Xarray
-    if "time" not in df.columns and df.index.name != "time":
-        if "time_local" in df.columns:
-            df.rename(columns={"time_local": "time"}, inplace=True)
-
-    # Ensure siteid is present
-    if "siteid" not in df.columns:
-        if "site" in df.columns:
-            df.rename(columns={"site": "siteid"}, inplace=True)
-
-    # Groupby siteid and time, then to xarray
-    # Drop duplicates to be safe
-    df = df.drop_duplicates(subset=["time", "siteid"])
-    ds = df.set_index(["time", "siteid"]).sort_index().to_xarray()
-
-    # Fix lat/lon to be 1D coordinates of siteid
-    for coord in ["latitude", "longitude"]:
-        if coord in ds.data_vars:
-            # Take the first non-null value for each site
-            # Using first() after groupby siteid
-            # Or just take the mean across time dimension if it's (time, siteid)
-            ds[coord] = ds[coord].mean(dim="time", skipna=True)
-            ds = ds.set_coords(coord)
+    if "PM2.5" in ds.data_vars:
+        ds = ds.rename({"PM2.5": "PM25"})
 
     if with_met:
         ds = add_met_to_airnow(ds)

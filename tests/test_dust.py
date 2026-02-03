@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from dust import add_met_to_airnow, dust_algorithm, fill_gaps
+from dust import add_met_to_airnow, dust_algorithm, fill_gaps, get_and_clean_obs
 
 
 def create_mock_ds(n_hours=24):
@@ -190,29 +190,22 @@ def test_add_met_to_airnow():
     )
     ds = ds.set_coords(["latitude", "longitude"])
 
-    # Mock ish_lite.add_data
-    mock_df_ish = pd.DataFrame(
+    # Mock return value for monetio.load
+    mock_ds_ish = xr.Dataset(
         {
-            "time": [time[0], time[1]],
-            "siteid": ["ISD1", "ISD1"],
-            "temp": [20.0, 21.0],
-            "dew_pt_temp": [10.0, 11.0],
-            "ws": [5.0, 6.0],
-        }
+            "temp": (("time", "siteid"), [[20.0], [21.0]]),
+            "dew_pt_temp": (("time", "siteid"), [[10.0], [11.0]]),
+            "ws": (("time", "siteid"), [[5.0], [6.0]]),
+        },
+        coords={
+            "time": time,
+            "siteid": ["ISD1"],
+            "latitude": (("siteid",), [40.1]),
+            "longitude": (("siteid",), [-100.1]),
+        },
     )
 
-    # Mock ish_lite.ISH.read_ish_history
-    mock_history = pd.DataFrame(
-        {"station_id": ["ISD1"], "latitude": [40.1], "longitude": [-100.1]}
-    )
-
-    with (
-        patch("monetio.obs.ish_lite.add_data", return_value=mock_df_ish),
-        patch("monetio.obs.ish_lite.ISH") as mock_ish_cls,
-    ):
-        mock_ish_inst = mock_ish_cls.return_value
-        mock_ish_inst.read_ish_history.return_value = mock_history
-
+    with patch("monetio.load", return_value=mock_ds_ish):
         ds_out = add_met_to_airnow(ds)
 
         assert "TEMP" in ds_out
@@ -220,3 +213,29 @@ def test_add_met_to_airnow():
         assert "RH" in ds_out
         assert "WS" in ds_out
         assert not ds_out.TEMP.isnull().any()
+
+
+def test_get_and_clean_obs():
+    """Test get_and_clean_obs using the new monetio.load interface."""
+    time = pd.date_range("2023-01-01", periods=2, freq="h")
+    mock_ds = xr.Dataset(
+        {
+            "PM10": (("time", "siteid"), [[100], [200]]),
+            "PM2.5": (("time", "siteid"), [[10], [20]]),
+        },
+        coords={
+            "time": time,
+            "siteid": ["site1"],
+            "latitude": (("siteid",), [40.0]),
+            "longitude": (("siteid",), [-100.0]),
+        },
+    )
+
+    with patch("monetio.load", return_value=mock_ds):
+        ds_out = get_and_clean_obs(
+            source="airnow", start="2023-01-01", end="2023-01-01"
+        )
+
+        assert "PM10" in ds_out
+        assert "PM25" in ds_out  # Renamed from PM2.5
+        assert not ds_out.PM10.isnull().any()

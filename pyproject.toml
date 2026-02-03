@@ -17,7 +17,7 @@ classifiers = [
 ]
 license = { text = "MIT" }
 dependencies = [
-    "monetio",
+    "monetio @ git+https://github.com/bbakernoaa/monetio.git@develop",
     "xarray",
     "dask",
     "pandas",
