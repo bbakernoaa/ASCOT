@@ -38,7 +38,7 @@ jobs:
           DASHBOARD_DAYS: 30
         run: |
           export PYTHONPATH=$PYTHONPATH:.
-          python dashboard.py
+          python src/dashboard.py
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
