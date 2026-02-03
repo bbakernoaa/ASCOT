@@ -1,5 +1,5 @@
 # ASCOT 🍃⚡
-**ARL Surface Wind-Blown Dust Detection Algorithm**
+**ARL Surface Wind-Blown Dust Detection Algorithm** 
 
 ASCOT (Automated Surface Coordinate Observation Tracking) is a high-performance scientific pipeline for detecting wind-blown dust events using surface monitor data (EPA AQS and AirNow).
 
