@@ -112,6 +112,7 @@ def test_dust_algorithm_duration_filter():
     assert not res.DUST.sel(siteid="Site1").any()
     assert np.isnan(res.DURATION.sel(siteid="Site1")).all()
 
+
 def test_dust_algorithm_rh():
     """Verify RH dependence in dust algorithm."""
     # Create synthetic dataset
@@ -122,7 +123,7 @@ def test_dust_algorithm_rh():
             "PM10": (("time", "siteid"), np.full((10, 1), 200.0)),
             "PM25": (("time", "siteid"), np.full((10, 1), 20.0)),
             "WS": (("time", "siteid"), np.full((10, 1), 10.0)),
-            "RH": (("time", "siteid"), np.full((10, 1), 50.0)), # Above 40
+            "RH": (("time", "siteid"), np.full((10, 1), 50.0)),  # Above 40
         },
         coords={"time": time, "siteid": siteid},
     )
@@ -138,14 +139,15 @@ def test_dust_algorithm_rh():
     # Should be True
     assert ds_out.DUST.any()
 
+
 def test_dynamic_threshold():
     """Verify dynamic threshold logic in dust algorithm."""
     # Create synthetic dataset with 40 days of data
     np.random.seed(42)
-    time = pd.date_range("2023-01-01", periods=24*40, freq="h")
+    time = pd.date_range("2023-01-01", periods=24 * 40, freq="h")
     siteid = ["site1"]
     # Mean = 50, Std = 5
-    pm10 = np.random.normal(50, 5, (24*40, 1))
+    pm10 = np.random.normal(50, 5, (24 * 40, 1))
     pm10 = np.maximum(pm10, 0)
     # Add a peak at the end that is above dynamic threshold but below 100
     pm10[-5:] = 80
@@ -154,7 +156,7 @@ def test_dynamic_threshold():
         {
             "PM10": (("time", "siteid"), pm10),
             "PM25": (("time", "siteid"), pm10 * 0.1),
-            "WS": (("time", "siteid"), np.full((24*40, 1), 10.0)),
+            "WS": (("time", "siteid"), np.full((24 * 40, 1), 10.0)),
         },
         coords={"time": time, "siteid": siteid},
     )
