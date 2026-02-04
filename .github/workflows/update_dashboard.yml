@@ -28,9 +28,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-
-      - name: Set up Python
-        run: uv python install 3.12
+          python-version: '3.12'
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -40,15 +38,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgeos-dev libproj-dev
 
-      - name: Install Python Dependencies
-        run: uv pip install --system .
-
       - name: Generate Dashboard
         env:
           DASHBOARD_DAYS: 30
         run: |
-          export PYTHONPATH=$PYTHONPATH:.
-          python src/dashboard.py
+          uv run python src/dashboard.py
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

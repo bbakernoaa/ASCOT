@@ -48,6 +48,9 @@ ignore = ["D100", "D104"]
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
 
+[tool.uv.sources]
+monetio = { git = "https://github.com/bbakernoaa/monetio.git", branch = "develop" }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
