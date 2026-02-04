@@ -183,6 +183,8 @@ def plot_dust_interactive(
         title=f"Dust Detection: {var}",
         groupby="time",
         dynamic=False,
+        xlim=(-125, -65),
+        ylim=(25, 50),
         **kwargs,
     )
 

@@ -1,7 +1,7 @@
-# ASCOT 🍃⚡
+# DustTrace 🍃⚡
 **ARL Surface Wind-Blown Dust Detection Algorithm** 
 
-ASCOT (Automated Surface Coordinate Observation Tracking) is a high-performance scientific pipeline for detecting wind-blown dust events using surface monitor data (EPA AQS and AirNow).
+DustTrace is a high-performance scientific pipeline for detecting wind-blown dust events using surface monitor data (EPA AQS and AirNow).
 
 Architected by **Aero**, this version is optimized for the Pangeo ecosystem, supporting both eager execution (NumPy) and lazy, distributed computation (Dask).
 
