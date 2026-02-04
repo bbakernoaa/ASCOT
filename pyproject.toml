@@ -26,6 +26,8 @@ dependencies = [
     "hvplot",
     "geoviews",
     "bottleneck",
+    "panel",
+    "scipy",
 ]
 
 [project.optional-dependencies]
