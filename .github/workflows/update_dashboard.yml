@@ -41,7 +41,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install "pandas<3.0" xarray dask netcdf4 cartopy hvplot geoviews bottleneck panel
-          pip install git+https://github.com/noaa-oar-arl/monetio.git@develop
+          pip install git+https://github.com/bbakernoaa/monetio.git@develop
 
       - name: Generate Dashboard
         env:
