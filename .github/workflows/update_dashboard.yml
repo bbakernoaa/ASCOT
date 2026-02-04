@@ -39,9 +39,9 @@ jobs:
 
       - name: Install Python Dependencies
         run: |
-          pip install --upgrade pip
-          pip install "pandas<3.0" xarray dask netcdf4 cartopy hvplot geoviews bottleneck panel
-          pip install git+https://github.com/bbakernoaa/monetio.git@develop
+          pip install uv
+          uv pip install --system "pandas<3.0" xarray dask netcdf4 cartopy hvplot geoviews bottleneck panel
+          uv pip install --system git+https://github.com/bbakernoaa/monetio.git@develop
 
       - name: Generate Dashboard
         env:
