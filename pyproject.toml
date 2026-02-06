@@ -17,7 +17,7 @@ classifiers = [
 ]
 license = { text = "MIT" }
 dependencies = [
-    "monetio @ git+https://github.com/bbakernoaa/monetio.git@develop",
+    "monetio",
     "xarray",
     "dask",
     "pandas",
@@ -49,7 +49,7 @@ ignore = ["D100", "D104"]
 convention = "numpy"
 
 [tool.uv.sources]
-monetio = { git = "https://github.com/bbakernoaa/monetio.git", branch = "develop" }
+monetio = { git = "https://github.com/bbakernoaa/monetio.git", branch = "switch-to-uv-ci-12392808968856270812" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

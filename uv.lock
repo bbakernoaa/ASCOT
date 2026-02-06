@@ -1382,7 +1382,7 @@ requires-dist = [
     { name = "dask" },
     { name = "geoviews" },
     { name = "hvplot" },
-    { name = "monetio", git = "https://github.com/bbakernoaa/monetio.git?branch=develop" },
+    { name = "monetio", git = "https://github.com/bbakernoaa/monetio.git?branch=switch-to-uv-ci-12392808968856270812" },
     { name = "netcdf4" },
     { name = "pandas" },
     { name = "panel" },
@@ -2963,7 +2963,7 @@ wheels = [
 [[package]]
 name = "monetio"
 version = "0.2.7"
-source = { git = "https://github.com/bbakernoaa/monetio.git?branch=develop#dff71f8b5b1baad0c2bb54a663fbf8c767657b93" }
+source = { git = "https://github.com/bbakernoaa/monetio.git?branch=switch-to-uv-ci-12392808968856270812#015e67630ff1aee7b9114fb3d10c7470da6bc3e6" }
 dependencies = [
     { name = "dask", version = "2024.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "dask", version = "2026.1.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },
@@ -2974,6 +2974,9 @@ dependencies = [
     { name = "netcdf4", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "netcdf4", version = "1.7.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
     { name = "netcdf4", version = "1.7.4", source = { registry = "https://pypi.org/simple" }, marker = "(python_full_version >= '3.10' and platform_machine != 'ARM64') or (python_full_version >= '3.11' and platform_machine == 'ARM64' and sys_platform == 'win32') or (python_full_version >= '3.10' and sys_platform != 'win32')" },
+    { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.10.*'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pyarrow", version = "21.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
