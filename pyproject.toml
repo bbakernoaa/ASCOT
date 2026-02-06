@@ -17,7 +17,7 @@ classifiers = [
 ]
 license = { text = "MIT" }
 dependencies = [
-    "monetio @ git+https://github.com/bbakernoaa/monetio.git@develop",
+    "monetio",
     "xarray",
     "dask",
     "pandas",
@@ -26,6 +26,8 @@ dependencies = [
     "hvplot",
     "geoviews",
     "bottleneck",
+    "panel",
+    "scipy",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +47,9 @@ ignore = ["D100", "D104"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
+
+[tool.uv.sources]
+monetio = { git = "https://github.com/bbakernoaa/monetio.git", branch = "switch-to-uv-ci-12392808968856270812" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

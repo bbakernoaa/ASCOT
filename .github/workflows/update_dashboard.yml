@@ -24,9 +24,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
         with:
+          enable-cache: true
           python-version: '3.12'
 
       - name: Setup Pages
@@ -37,18 +38,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgeos-dev libproj-dev
 
-      - name: Install Python Dependencies
-        run: |
-          pip install uv
-          uv pip install --system "pandas<3.0" xarray dask netcdf4 cartopy hvplot geoviews bottleneck panel
-          uv pip install --system git+https://github.com/bbakernoaa/monetio.git@develop
-
       - name: Generate Dashboard
         env:
           DASHBOARD_DAYS: 30
         run: |
-          export PYTHONPATH=$PYTHONPATH:.
-          python src/dashboard.py
+          uv run python src/dashboard.py
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
