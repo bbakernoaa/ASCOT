@@ -525,6 +525,13 @@ def get_and_clean_obs(
     if with_met:
         ds = add_met_to_airnow(ds)
 
+    # Fix for StringDtype compatibility with Dask
+    # Pandas 3.0+ uses StringDtype by default for strings,
+    # but Dask 2024.x and earlier still have issues interpreting it.
+    for var in ds.variables:
+        if isinstance(ds[var].dtype, pd.StringDtype):
+            ds[var] = ds[var].astype(object)
+
     return ds
 
 
