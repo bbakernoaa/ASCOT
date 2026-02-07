@@ -40,7 +40,7 @@ jobs:
 
       - name: Generate Dashboard
         env:
-          DASHBOARD_DAYS: 180
+          DASHBOARD_DAYS: 90
         run: |
           uv run python src/dashboard.py
 
