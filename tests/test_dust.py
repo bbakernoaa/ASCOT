@@ -2,9 +2,17 @@ from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
+import pytest
 import xarray as xr
 
-from dust import add_met_to_airnow, dust_algorithm, fill_gaps, get_and_clean_obs
+from dust import (
+    add_met_to_airnow,
+    dust_algorithm,
+    fill_gaps,
+    get_and_clean_obs,
+    get_monthly_quantile,
+    patch_co,
+)
 
 
 def create_mock_ds(n_hours=24):
@@ -239,3 +247,129 @@ def test_get_and_clean_obs():
         assert "PM10" in ds_out
         assert "PM25" in ds_out  # Renamed from PM2.5
         assert not ds_out.PM10.isnull().any()
+
+
+def test_theoretical_real_dust_event():
+    """Verify detection of a high-confidence theoretical dust event."""
+    times = pd.date_range("2023-01-01", periods=10, freq="h")
+    siteid = ["site1"]
+
+    # Values that should trigger T2+WS (High confidence)
+    # PM10 > 140, PM25/PM10 <= 0.26, WS > 7.3, RH < 40
+    ds = xr.Dataset(
+        {
+            "PM10": (("time", "siteid"), np.full((10, 1), 200.0)),
+            "PM25": (("time", "siteid"), np.full((10, 1), 40.0)),  # Ratio = 0.2
+            "WS": (("time", "siteid"), np.full((10, 1), 10.0)),
+            "RH": (("time", "siteid"), np.full((10, 1), 20.0)),
+        },
+        coords={"time": times, "siteid": siteid},
+    )
+
+    ds_out = dust_algorithm(ds)
+
+    assert ds_out.DUST.all()
+    assert (ds_out.Method == "T2+WS").all()
+    assert (ds_out.QC == 3).all()
+
+
+def test_get_monthly_quantile():
+    """Verify monthly quantile calculation."""
+    times = pd.date_range("2023-01-01", periods=24 * 60, freq="h")  # Jan and Feb
+    siteid = ["site1"]
+
+    data = np.arange(len(times)).reshape(-1, 1)
+    ds = xr.Dataset(
+        {"PM10": (("time", "siteid"), data)}, coords={"time": times, "siteid": siteid}
+    )
+
+    jan_data = ds.PM10.sel(time=ds.time.dt.month == 1)
+    expected_jan_median = np.median(jan_data.values)
+
+    res = get_monthly_quantile(ds, 0.5, "PM10")
+
+    assert res.sel(month=1) == expected_jan_median
+    assert res.sel(month=2) == np.median(ds.PM10.sel(time=ds.time.dt.month == 2).values)
+
+
+def test_patch_co():
+    """Verify CO patching logic."""
+    times = pd.date_range("2023-01-01", periods=30, freq="h")
+    siteid = ["site1"]
+
+    # DUST_FLAG True from 5 to 25
+    dust = np.zeros((30, 1), dtype=bool)
+    dust[5:26, 0] = True
+
+    # CO above threshold only at index 15
+    co = np.zeros((30, 1))
+    co[15, 0] = 1.0
+
+    ds = xr.Dataset(
+        {"DUST_FLAG": (("time", "siteid"), dust), "CO": (("time", "siteid"), co)},
+        coords={"time": times, "siteid": siteid},
+    )
+
+    res = patch_co(ds, "DUST_FLAG", co_col="CO", threshold=0.5)
+
+    # Spreads from 15-2=13 to 15+12=27.
+    # But limited by DUST_FLAG (5 to 25).
+    # So expected True from 13 to 25.
+    assert not res.isel(time=12, siteid=0)
+    assert res.isel(time=13, siteid=0)
+    assert res.isel(time=25, siteid=0)
+    assert not res.isel(time=26, siteid=0)
+
+
+def test_get_and_clean_obs_no_data():
+    """Test get_and_clean_obs when monetio returns None."""
+    with patch("monetio.load", return_value=None):
+        with pytest.raises(ValueError, match="No data found"):
+            get_and_clean_obs(source="airnow", start="2023-01-01", end="2023-01-01")
+
+
+def test_get_and_clean_obs_aqs():
+    """Test get_and_clean_obs with AQS source."""
+    time = pd.date_range("2023-01-01", periods=2, freq="h")
+    mock_ds = xr.Dataset(
+        {
+            "PM10": (("time", "siteid"), [[100], [200]]),
+            "PM2.5": (("time", "siteid"), [[10], [20]]),
+        },
+        coords={
+            "time": time,
+            "siteid": ["site1"],
+        },
+    )
+
+    with patch("monetio.load", return_value=mock_ds) as mock_load:
+        ds_out = get_and_clean_obs(source="aqs", start="2023-01-01", end="2023-01-01")
+        assert mock_load.called
+        args, kwargs = mock_load.call_args
+        assert args[0] == "aqs"
+        assert "PM10" in kwargs["param"]
+        assert "PM25" in ds_out
+
+
+def test_add_met_to_airnow_no_ish_data():
+    """Test add_met_to_airnow when ISD-Lite returns None."""
+    ds = create_mock_ds()
+    ds.coords["latitude"] = (("siteid"), [40.0, 41.0])
+    ds.coords["longitude"] = (("siteid"), [-100.0, -101.0])
+    ds = ds.set_coords(["latitude", "longitude"])
+
+    with patch("monetio.load", return_value=None):
+        res = add_met_to_airnow(ds)
+        assert "TEMP" not in res.data_vars
+
+
+def test_add_met_to_airnow_error():
+    """Test add_met_to_airnow when monetio.load raises an error."""
+    ds = create_mock_ds()
+    ds.coords["latitude"] = (("siteid"), [40.0, 41.0])
+    ds.coords["longitude"] = (("siteid"), [-100.0, -101.0])
+    ds = ds.set_coords(["latitude", "longitude"])
+
+    with patch("monetio.load", side_effect=Exception("Fetch error")):
+        res = add_met_to_airnow(ds)
+        assert "TEMP" not in res.data_vars
