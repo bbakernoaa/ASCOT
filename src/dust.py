@@ -9,6 +9,11 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+# Disable Pandas 3.0+ automatic string inference to maintain Dask compatibility.
+# This prevents metadata mismatches between empty and non-empty partitions.
+if hasattr(pd.options, "future") and hasattr(pd.options.future, "infer_string"):
+    pd.options.future.infer_string = False
+
 
 def fill_gaps(da: xr.DataArray, dim: str = "time", limit: int = 1) -> xr.DataArray:
     """

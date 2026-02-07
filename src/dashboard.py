@@ -18,14 +18,14 @@ from viz import plot_dust_interactive, plot_dust_timeseries
 pn.extension(sizing_mode="stretch_width")
 
 
-def build_dashboard(days: int = 30) -> pn.Column:
+def build_dashboard(days: int = 180) -> pn.Column:
     """
     Build the dust detection dashboard for the last N days.
 
     Parameters
     ----------
     days : int, optional
-        Number of days of data to fetch, by default 30.
+        Number of days of data to fetch, by default 180.
 
     Returns
     -------
@@ -44,9 +44,10 @@ def build_dashboard(days: int = 30) -> pn.Column:
         )
     except Exception as e:
         print(f"Error fetching data: {e}")
-        # Fallback to a smaller period if 30 days fails
-        print("Attempting to fetch last 7 days instead...")
-        start_date = end_date - pd.Timedelta(days=7)
+        # Fallback to a smaller period if requested period fails
+        fallback_days = 30 if days > 30 else 7
+        print(f"Attempting to fetch last {fallback_days} days instead...")
+        start_date = end_date - pd.Timedelta(days=fallback_days)
         ds = get_and_clean_obs(
             source="airnow",
             start=start_date.strftime("%Y-%m-%d"),
