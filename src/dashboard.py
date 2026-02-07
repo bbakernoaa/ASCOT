@@ -18,7 +18,7 @@ from viz import plot_dust_interactive, plot_dust_timeseries
 pn.extension(sizing_mode="stretch_width")
 
 
-def build_dashboard(days: int = 180) -> pn.Column:
+def build_dashboard(days: int = 90) -> pn.Column:
     """
     Build the dust detection dashboard for the last N days.
 
