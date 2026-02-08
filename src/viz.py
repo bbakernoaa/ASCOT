@@ -109,12 +109,7 @@ def plot_dust_static(
     # Plot events
     if len(events.siteid) > 0:
         # Convert to dataframe for easier sorting
-        events_df = (
-            events[[var]]
-            .assign_coords(latitude=lat_valid, longitude=lon_valid)
-            .to_dataframe()
-            .reset_index()
-        )
+        events_df = events[[var]].assign_coords(latitude=lat_valid, longitude=lon_valid).to_dataframe().reset_index()
         # Sort by var so higher values are plotted last (on top)
         events_df = events_df.sort_values(by=var, ascending=True)
 
@@ -137,6 +132,67 @@ def plot_dust_static(
     ax.set_title(f"Dust Detection: {var}\nTime: {current_time}")
 
     return ax
+
+
+def plot_dust_heatmap(
+    ds: xr.Dataset,
+    var: str = "PM10",
+    **kwargs: Any,
+) -> Any:
+    """
+    Create a heatmap of PM10 concentrations at sites with detected dust.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset containing dust detection results.
+    var : str, optional
+        The variable to plot on color axis, by default "PM10".
+    **kwargs : Any
+        Additional arguments passed to hvplot.
+
+    Returns
+    -------
+    hv.Element
+        The interactive HoloViews object.
+    """
+    if hv is None:
+        raise ImportError("holoviews and hvplot are required for interactive plotting.")
+
+    # Only show sites that had at least one dust event
+    has_event = ds.DUST.any(dim="time")
+    ds_to_plot = ds.sel(siteid=has_event)
+
+    if ds_to_plot.siteid.size == 0:
+        return hv.Div("No dust events detected in this period.")
+
+    # Convert to dataframe
+    # Include DUST and QC for context
+    cols_to_keep = [var]
+    if "DUST" in ds_to_plot:
+        cols_to_keep.append("DUST")
+    if "QC" in ds_to_plot:
+        cols_to_keep.append("QC")
+
+    df = ds_to_plot[cols_to_keep].to_dataframe().reset_index()
+    df["time"] = pd.to_datetime(df["time"])
+
+    # Heatmap
+    # We use heatmap to show PM10 over time for each site
+    heatmap = df.hvplot.heatmap(
+        x="time",
+        y="siteid",
+        C=var,
+        cmap="viridis",
+        title=f"Regional Timeline of {var} (Heatmap)",
+        xlabel="Time",
+        ylabel="Site ID",
+        clabel=f"{var} Concentration",
+        rot=45,
+        **kwargs,
+    )
+
+    return heatmap
 
 
 def plot_dust_interactive(
@@ -243,19 +299,44 @@ def plot_dust_timeseries(
         return hv.Div("No dust events detected in this period.")
 
     # Convert to dataframe
-    df = ds_to_plot[[var]].to_dataframe().reset_index()
+    # Include DUST and QC for markers
+    cols_to_keep = [var]
+    if "DUST" in ds_to_plot:
+        cols_to_keep.append("DUST")
+    if "QC" in ds_to_plot:
+        cols_to_keep.append("QC")
+
+    df = ds_to_plot[cols_to_keep].to_dataframe().reset_index()
     df["time"] = pd.to_datetime(df["time"])
 
     # Spaghetti plot
-    plot = df.hvplot.line(
+    lines = df.hvplot.line(
         x="time",
         y=var,
         by="siteid",
         alpha=0.4,
         legend=False,
-        title=f"Time Series of {var} at Dust-Affected Sites",
+        title=f"Time Series of {var} at Dust-Affected Sites (Markers show detections)",
         ylabel=f"{var} concentration",
         **kwargs,
     )
 
-    return plot
+    # Markers for dust events (QC > 0 or DUST is True)
+    if "DUST" in df.columns:
+        dust_df = df[df.DUST].copy()
+        if not dust_df.empty:
+            markers = dust_df.hvplot.scatter(
+                x="time",
+                y=var,
+                by="siteid",
+                c="QC" if "QC" in dust_df.columns else "red",
+                cmap="autumn_r",
+                size=40,
+                marker="circle",
+                alpha=0.8,
+                hover_cols=["siteid", "time", "QC"] if "QC" in dust_df.columns else ["siteid", "time"],
+                legend=False,
+            )
+            return lines * markers
+
+    return lines

@@ -7,13 +7,12 @@ Architected by Aero 🍃⚡
 
 import os
 
-import numpy as np
 import pandas as pd
 import panel as pn
 import xarray as xr
 
 from dust import dust_algorithm, get_and_clean_obs
-from viz import plot_dust_interactive, plot_dust_timeseries
+from viz import plot_dust_heatmap, plot_dust_interactive
 
 # Enable Panel extensions
 pn.extension(sizing_mode="stretch_width")
@@ -79,11 +78,17 @@ def build_dashboard(days: int = 90) -> pn.Column:
         dust_hours = int(ds_conf.time.size)
 
         # Total days with dust events (QC > 1)
-        dust_days = int(len(np.unique(ds_conf.time.dt.floor("1D"))))
+        # Redefined: At least 3 sites must report dust on the same day
+        sites_per_day = mask.resample(time="1D").max(dim="time").sum(dim="siteid")
+        dust_days = int((sites_per_day >= 3).sum())
+
+        # Regional Events: At least 6 sites on the same day
+        regional_events = int((sites_per_day >= 6).sum())
     else:
         dust_sites = 0
         dust_hours = 0
         dust_days = 0
+        regional_events = 0
 
     print("Creating visualizations...")
     # 1. Interactive map (Track B) - Daily Max
@@ -96,12 +101,12 @@ def build_dashboard(days: int = 90) -> pn.Column:
 
     interactive_map = plot_dust_interactive(ds_daily, var="QC")
 
-    # 2. Spaghetti Time Series plot
-    # We use hourly data for the time series but only for sites that had dust
-    ts_plot = plot_dust_timeseries(ds, var="PM10")
+    # 2. Regional Timeline Heatmap
+    # We use hourly data for the heatmap but only for sites that had dust
+    ts_plot = plot_dust_heatmap(ds, var="PM10")
 
     # Link selections for bidirectional interactivity
-    # This allows box selection on the map to filter the time series and vice versa
+    # This allows box selection on the map to filter the heatmap and vice versa
     try:
         from holoviews.selection import link_selections
 
@@ -138,6 +143,13 @@ def build_dashboard(days: int = 90) -> pn.Column:
             font_size="20pt",
             title_size="10pt",
         ),
+        pn.indicators.Number(
+            name="Significant Regional Events",
+            value=regional_events,
+            format="{value}",
+            font_size="20pt",
+            title_size="10pt",
+        ),
         sizing_mode="stretch_width",
     )
 
@@ -153,7 +165,11 @@ def build_dashboard(days: int = 90) -> pn.Column:
             """
         ),
         pn.pane.Markdown("## Summary Statistics"),
-        pn.pane.Markdown("*Statistics reflect high-confidence events (QC > 1)*"),
+        pn.pane.Markdown(
+            "*Statistics reflect high-confidence events (QC > 1). "
+            "Days with Dust Events requires ≥3 sites. "
+            "Regional Events requires ≥6 sites.*"
+        ),
         indicators,
         pn.pane.Markdown("> **Note**: QC=0 indicates no dust detected."),
         pn.pane.Markdown("## Data Sources"),
@@ -181,9 +197,7 @@ def build_dashboard(days: int = 90) -> pn.Column:
 
     # Main area content
     main = [
-        pn.pane.Markdown(
-            f"### Monitoring Period: {start_date.date()} to {end_date.date()}"
-        ),
+        pn.pane.Markdown(f"### Monitoring Period: {start_date.date()} to {end_date.date()}"),
         pn.Card(
             map_final,
             title="Daily Max Dust Confidence (QC: 0=None, 1=Low, 2=Med, 3=High)",
@@ -191,7 +205,7 @@ def build_dashboard(days: int = 90) -> pn.Column:
         ),
         pn.Card(
             ts_final,
-            title="PM10 Spaghetti Plot (Use Box Select on map to filter sites)",
+            title="Regional Timeline: PM10 Heatmap (Use Box Select on map to filter sites)",
             sizing_mode="stretch_both",
         ),
     ]
