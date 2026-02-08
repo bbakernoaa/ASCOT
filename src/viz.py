@@ -243,19 +243,44 @@ def plot_dust_timeseries(
         return hv.Div("No dust events detected in this period.")
 
     # Convert to dataframe
-    df = ds_to_plot[[var]].to_dataframe().reset_index()
+    # Include DUST and QC for markers
+    cols_to_keep = [var]
+    if "DUST" in ds_to_plot:
+        cols_to_keep.append("DUST")
+    if "QC" in ds_to_plot:
+        cols_to_keep.append("QC")
+
+    df = ds_to_plot[cols_to_keep].to_dataframe().reset_index()
     df["time"] = pd.to_datetime(df["time"])
 
     # Spaghetti plot
-    plot = df.hvplot.line(
+    lines = df.hvplot.line(
         x="time",
         y=var,
         by="siteid",
         alpha=0.4,
         legend=False,
-        title=f"Time Series of {var} at Dust-Affected Sites",
+        title=f"Time Series of {var} at Dust-Affected Sites (Markers show detections)",
         ylabel=f"{var} concentration",
         **kwargs,
     )
 
-    return plot
+    # Markers for dust events (QC > 0 or DUST is True)
+    if "DUST" in df.columns:
+        dust_df = df[df.DUST].copy()
+        if not dust_df.empty:
+            markers = dust_df.hvplot.scatter(
+                x="time",
+                y=var,
+                by="siteid",
+                c="QC" if "QC" in dust_df.columns else "red",
+                cmap="autumn_r",
+                size=40,
+                marker="circle",
+                alpha=0.8,
+                hover_cols=["siteid", "time", "QC"] if "QC" in dust_df.columns else ["siteid", "time"],
+                legend=False,
+            )
+            return lines * markers
+
+    return lines
