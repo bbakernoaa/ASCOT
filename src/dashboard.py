@@ -197,9 +197,7 @@ def build_dashboard(days: int = 90) -> pn.Column:
 
     # Main area content
     main = [
-        pn.pane.Markdown(
-            f"### Monitoring Period: {start_date.date()} to {end_date.date()}"
-        ),
+        pn.pane.Markdown(f"### Monitoring Period: {start_date.date()} to {end_date.date()}"),
         pn.Card(
             map_final,
             title="Daily Max Dust Confidence (QC: 0=None, 1=Low, 2=Med, 3=High)",

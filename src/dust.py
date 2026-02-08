@@ -37,13 +37,9 @@ def fill_gaps(da: xr.DataArray, dim: str = "time", limit: int = 1) -> xr.DataArr
         Boolean mask with filled gaps.
     """
     if limit != 1:
-        raise NotImplementedError(
-            "Only limit=1 is currently implemented for fill_gaps."
-        )
+        raise NotImplementedError("Only limit=1 is currently implemented for fill_gaps.")
 
-    return da | (
-        da.shift({dim: 1}, fill_value=False) & da.shift({dim: -1}, fill_value=False)
-    )
+    return da | (da.shift({dim: 1}, fill_value=False) & da.shift({dim: -1}, fill_value=False))
 
 
 def fetch_isd_lite(dates: pd.DatetimeIndex, box: list[float]) -> Optional[xr.Dataset]:
@@ -75,9 +71,7 @@ def fetch_isd_lite(dates: pd.DatetimeIndex, box: list[float]) -> Optional[xr.Dat
         ish = ISH()
         ish.dates = dates
         ish.read_ish_history()
-        dfloc = ish.subset_sites(
-            latmin=box[0], lonmin=box[1], latmax=box[2], lonmax=box[3]
-        )
+        dfloc = ish.subset_sites(latmin=box[0], lonmin=box[1], latmax=box[2], lonmax=box[3])
 
         urls = ish.build_urls(sites=dfloc)
         if urls.empty:
@@ -110,9 +104,7 @@ def fetch_isd_lite(dates: pd.DatetimeIndex, box: list[float]) -> Optional[xr.Dat
         # Filter to requested dates
         df_ish = df_ish.loc[(df_ish.time >= dates.min()) & (df_ish.time <= dates.max())]
         # Merge with station info
-        df_ish = pd.merge(
-            df_ish, dfloc, how="left", left_on="siteid", right_on="station_id"
-        ).rename(columns={"ctry": "country"})
+        df_ish = pd.merge(df_ish, dfloc, how="left", left_on="siteid", right_on="station_id").rename(columns={"ctry": "country"})
 
         return reader.to_xarray(df_ish)
     except Exception as e:
@@ -192,9 +184,7 @@ def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
             # Selection for each site
             var_data = ds_ish[var].sel(siteid=nearest_ish_sites)
             var_data["siteid"] = ds.siteid
-            met_ds_list.append(
-                var_data.rename(var.upper() if var != "ws" else "WS_MET")
-            )
+            met_ds_list.append(var_data.rename(var.upper() if var != "ws" else "WS_MET"))
 
     if not met_ds_list:
         return ds
@@ -209,9 +199,7 @@ def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
         t = ds_met.TEMP
         td = ds_met.DEW_PT_TEMP
         # August-Roche-Magnus formula
-        rh = 100 * (
-            np.exp((17.625 * td) / (243.04 + td)) / np.exp((17.625 * t) / (243.04 + t))
-        )
+        rh = 100 * (np.exp((17.625 * td) / (243.04 + td)) / np.exp((17.625 * t) / (243.04 + t)))
         ds_met["RH"] = rh
 
     # Merge into original ds
@@ -229,16 +217,12 @@ def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
     # Provenance
     history_attr = ds.attrs.get("history", "")
     now = pd.Timestamp.now()
-    ds.attrs["history"] = (
-        history_attr + f" [{now}] Supplemented met data from ISD-Lite."
-    )
+    ds.attrs["history"] = history_attr + f" [{now}] Supplemented met data from ISD-Lite."
 
     return ds
 
 
-def start_end_duration(
-    ds: xr.Dataset, column: str = "DUST", time_dim: str = "time"
-) -> xr.Dataset:
+def start_end_duration(ds: xr.Dataset, column: str = "DUST", time_dim: str = "time") -> xr.Dataset:
     """
     Calculate the start date and duration of dust events.
 
@@ -300,7 +284,7 @@ def dust_algorithm(
     lower_threshold : float, optional
         Lower threshold for PM10, by default 100.0.
     upper_threshold : float, optional
-        Upper threshold for PM10, by default 140.0.
+        Upper threshold for PM10, by default 150.0.
 
     Returns
     -------
@@ -472,9 +456,7 @@ def get_quality(ds: xr.Dataset) -> xr.Dataset:
     xr.Dataset
         Dataset with 'QC' flag added.
     """
-    pm10_rmax = (
-        ds.PM10.rolling(time=3, center=True).max().bfill(dim="time").ffill(dim="time")
-    )
+    pm10_rmax = ds.PM10.rolling(time=3, center=True).max().bfill(dim="time").ffill(dim="time")
 
     qc = xr.full_like(ds.DUST, 0, dtype=int)
 
@@ -523,9 +505,7 @@ def get_monthly_quantile(ds: xr.Dataset, quantile: float, col: str) -> xr.DataAr
     return ds[col].groupby("time.month").quantile(quantile)
 
 
-def patch_co(
-    ds: xr.Dataset, col: str, co_col: str = "CO", threshold: float = 0.5
-) -> xr.DataArray:
+def patch_co(ds: xr.Dataset, col: str, co_col: str = "CO", threshold: float = 0.5) -> xr.DataArray:
     """
     Apply CO threshold patching to a boolean mask.
 
@@ -613,10 +593,7 @@ def get_and_clean_obs(
     if "box" in kwargs:
         b = kwargs["box"]
         ds = ds.where(
-            (ds.latitude >= b[0])
-            & (ds.longitude >= b[1])
-            & (ds.latitude <= b[2])
-            & (ds.longitude <= b[3]),
+            (ds.latitude >= b[0]) & (ds.longitude >= b[1]) & (ds.latitude <= b[2]) & (ds.longitude <= b[3]),
             drop=True,
         )
 
@@ -647,10 +624,7 @@ def get_and_clean_obs(
             # Compute suspicious mask
             suspicious = (is_constant | is_same).compute()
             if suspicious.any():
-                print(
-                    f"Dropping {int(suspicious.sum())} sites with suspicious "
-                    "PM10/PM2.5 correlation."
-                )
+                print(f"Dropping {int(suspicious.sum())} sites with suspicious PM10/PM2.5 correlation.")
                 ds = ds.sel(siteid=~suspicious)
 
     if with_met:
@@ -677,9 +651,7 @@ def main():
     parser.add_argument("-d", "--data", help="airnow or aqs", default="airnow")
     parser.add_argument("-o", "--output", help="output filename", required=True)
     parser.add_argument("--chunk", help="Chunk by siteid for Dask", action="store_true")
-    parser.add_argument(
-        "--with-met", help="Supplement with ISD-Lite met data", action="store_true"
-    )
+    parser.add_argument("--with-met", help="Supplement with ISD-Lite met data", action="store_true")
     parser.add_argument(
         "--dynamic-threshold",
         help="Use dynamic PM10 threshold (30-day mean + 2sigma)",
@@ -689,17 +661,13 @@ def main():
     args = parser.parse_args()
 
     if args.dynamic_threshold:
-        fetch_start = (pd.to_datetime(args.start) - pd.Timedelta(days=30)).strftime(
-            "%Y-%m-%d"
-        )
+        fetch_start = (pd.to_datetime(args.start) - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
         print(f"Dynamic threshold requested. Fetching data from {fetch_start}...")
     else:
         fetch_start = args.start
 
     print(f"Fetching {args.data} data...")
-    ds = get_and_clean_obs(
-        source=args.data, start=fetch_start, end=args.end, with_met=args.with_met
-    )
+    ds = get_and_clean_obs(source=args.data, start=fetch_start, end=args.end, with_met=args.with_met)
 
     if args.chunk:
         ds = ds.chunk({"siteid": 100})

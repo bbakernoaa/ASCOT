@@ -10,9 +10,7 @@ def test_batch_process():
 
         # Test with a small range: Jan and Feb 2023
         # End date is inclusive in pd.date_range
-        processes = batch_process(
-            start_date="2023-01-01", end_date="2023-02-01", freq="MS"
-        )
+        processes = batch_process(start_date="2023-01-01", end_date="2023-02-01", freq="MS")
 
         # 2023-01-01 and 2023-02-01
         assert len(processes) == 2

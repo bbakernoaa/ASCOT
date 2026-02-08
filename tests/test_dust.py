@@ -78,9 +78,7 @@ def test_dust_algorithm_eager_vs_lazy():
     assert hasattr(res_dask.DUST.data, "dask")
 
     # Compare results
-    xr.testing.assert_allclose(
-        res_numpy.DUST.astype(int), res_dask.DUST.compute().astype(int)
-    )
+    xr.testing.assert_allclose(res_numpy.DUST.astype(int), res_dask.DUST.compute().astype(int))
     xr.testing.assert_allclose(res_numpy.QC, res_dask.QC.compute())
 
     # Ensure dust was actually detected in our mock event
@@ -177,9 +175,7 @@ def test_dynamic_threshold():
     assert not ds_static.DUST.any()
 
     # Dynamic threshold
-    ds_dynamic = dust_algorithm(
-        ds, lower_threshold=100.0, upper_threshold=70.0, dynamic_threshold=True
-    )
+    ds_dynamic = dust_algorithm(ds, lower_threshold=100.0, upper_threshold=70.0, dynamic_threshold=True)
     assert ds_dynamic.DUST.any()
 
 
@@ -240,9 +236,7 @@ def test_get_and_clean_obs():
     )
 
     with patch("monetio.load", return_value=mock_ds):
-        ds_out = get_and_clean_obs(
-            source="airnow", start="2023-01-01", end="2023-01-01"
-        )
+        ds_out = get_and_clean_obs(source="airnow", start="2023-01-01", end="2023-01-01")
 
         assert "PM10" in ds_out
         assert "PM25" in ds_out  # Renamed from PM2.5
@@ -279,9 +273,7 @@ def test_get_monthly_quantile():
     siteid = ["site1"]
 
     data = np.arange(len(times)).reshape(-1, 1)
-    ds = xr.Dataset(
-        {"PM10": (("time", "siteid"), data)}, coords={"time": times, "siteid": siteid}
-    )
+    ds = xr.Dataset({"PM10": (("time", "siteid"), data)}, coords={"time": times, "siteid": siteid})
 
     jan_data = ds.PM10.sel(time=ds.time.dt.month == 1)
     expected_jan_median = np.median(jan_data.values)

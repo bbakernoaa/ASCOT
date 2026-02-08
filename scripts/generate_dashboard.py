@@ -49,8 +49,6 @@ def build_dashboard(nc_file, output_html):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        build_dashboard(
-            sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "dashboard.html"
-        )
+        build_dashboard(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "dashboard.html")
     else:
         print("Usage: python generate_dashboard.py <input_nc> <output_html>")

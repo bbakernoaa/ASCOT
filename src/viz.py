@@ -109,12 +109,7 @@ def plot_dust_static(
     # Plot events
     if len(events.siteid) > 0:
         # Convert to dataframe for easier sorting
-        events_df = (
-            events[[var]]
-            .assign_coords(latitude=lat_valid, longitude=lon_valid)
-            .to_dataframe()
-            .reset_index()
-        )
+        events_df = events[[var]].assign_coords(latitude=lat_valid, longitude=lon_valid).to_dataframe().reset_index()
         # Sort by var so higher values are plotted last (on top)
         events_df = events_df.sort_values(by=var, ascending=True)
 
@@ -339,11 +334,7 @@ def plot_dust_timeseries(
                 size=40,
                 marker="circle",
                 alpha=0.8,
-                hover_cols=(
-                    ["siteid", "time", "QC"]
-                    if "QC" in dust_df.columns
-                    else ["siteid", "time"]
-                ),
+                hover_cols=["siteid", "time", "QC"] if "QC" in dust_df.columns else ["siteid", "time"],
                 legend=False,
             )
             return lines * markers
