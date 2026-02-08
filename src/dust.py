@@ -270,7 +270,9 @@ def dust_algorithm(
     # 3. Setting Thresholds
     if dynamic_threshold:
         # Calculate rolling 30-day mean and std
-        pm10_rolling = ds.PM10.rolling(time=24 * 30, min_periods=1, center=False)
+        # Ensure window is not larger than the dataset length
+        window_size = min(24 * 30, len(ds.time))
+        pm10_rolling = ds.PM10.rolling(time=window_size, min_periods=1, center=False)
         pm10_mean = pm10_rolling.mean()
         pm10_std = pm10_rolling.std()
         pm10_lower_thr = pm10_mean + 2 * pm10_std
@@ -529,6 +531,11 @@ def get_and_clean_obs(
 
     if with_met:
         ds = add_met_to_airnow(ds)
+
+    # Resample to hourly to ensure consistency for the rolling windows
+    # Use '1h' (lowercase) for Pandas 3.0+ compatibility
+    if "time" in ds.dims:
+        ds = ds.resample(time="1h").mean()
 
     # Fix for StringDtype compatibility with Dask
     # Pandas 3.0+ uses StringDtype by default for strings,
