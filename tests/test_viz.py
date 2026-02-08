@@ -2,7 +2,12 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from viz import plot_dust_interactive, plot_dust_static, plot_dust_timeseries
+from viz import (
+    plot_dust_heatmap,
+    plot_dust_interactive,
+    plot_dust_static,
+    plot_dust_timeseries,
+)
 
 
 def create_mock_ds_with_coords(n_hours=24):
@@ -51,4 +56,13 @@ def test_plot_dust_timeseries():
     # Force a dust event
     ds["DUST"].values[0, 0] = True
     plot = plot_dust_timeseries(ds)
+    assert plot is not None
+
+
+def test_plot_dust_heatmap():
+    """Test heatmap plot creation."""
+    ds = create_mock_ds_with_coords()
+    # Force a dust event
+    ds["DUST"].values[0, 0] = True
+    plot = plot_dust_heatmap(ds)
     assert plot is not None

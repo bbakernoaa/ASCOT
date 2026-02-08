@@ -139,6 +139,67 @@ def plot_dust_static(
     return ax
 
 
+def plot_dust_heatmap(
+    ds: xr.Dataset,
+    var: str = "PM10",
+    **kwargs: Any,
+) -> Any:
+    """
+    Create a heatmap of PM10 concentrations at sites with detected dust.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset containing dust detection results.
+    var : str, optional
+        The variable to plot on color axis, by default "PM10".
+    **kwargs : Any
+        Additional arguments passed to hvplot.
+
+    Returns
+    -------
+    hv.Element
+        The interactive HoloViews object.
+    """
+    if hv is None:
+        raise ImportError("holoviews and hvplot are required for interactive plotting.")
+
+    # Only show sites that had at least one dust event
+    has_event = ds.DUST.any(dim="time")
+    ds_to_plot = ds.sel(siteid=has_event)
+
+    if ds_to_plot.siteid.size == 0:
+        return hv.Div("No dust events detected in this period.")
+
+    # Convert to dataframe
+    # Include DUST and QC for context
+    cols_to_keep = [var]
+    if "DUST" in ds_to_plot:
+        cols_to_keep.append("DUST")
+    if "QC" in ds_to_plot:
+        cols_to_keep.append("QC")
+
+    df = ds_to_plot[cols_to_keep].to_dataframe().reset_index()
+    df["time"] = pd.to_datetime(df["time"])
+
+    # Heatmap
+    # We use heatmap to show PM10 over time for each site
+    heatmap = df.hvplot.heatmap(
+        x="time",
+        y="siteid",
+        C=var,
+        cmap="viridis",
+        title=f"Regional Timeline of {var} (Heatmap)",
+        xlabel="Time",
+        ylabel="Site ID",
+        clabel=f"{var} Concentration",
+        rot=45,
+        **kwargs,
+    )
+
+    return heatmap
+
+
 def plot_dust_interactive(
     ds: xr.Dataset,
     var: str = "DUST",
