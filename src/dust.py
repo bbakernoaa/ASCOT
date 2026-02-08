@@ -286,7 +286,7 @@ def start_end_duration(
 def dust_algorithm(
     ds: xr.Dataset,
     lower_threshold: float = 100.0,
-    upper_threshold: float = 140.0,
+    upper_threshold: float = 150.0,
     dynamic_threshold: bool = False,
 ) -> xr.Dataset:
     """
@@ -358,9 +358,9 @@ def dust_algorithm(
     g2 = (pm10_rmean > pm10_lower_thr) & (pm10_rmax >= upper_threshold)
     g3 = (pm10_rmean > pm10_98_thr) & (pm10_rmax >= upper_threshold)
 
-    t1 = g2 & (ds.RATIO <= 0.35)
-    t2 = g2 & (ds.RATIO <= 0.26)
-    t3 = g2 & (ds.RATIO <= 0.20)
+    t1 = g2 & (ds.RATIO <= 0.40)
+    t2 = g2 & (ds.RATIO <= 0.25)
+    t3 = g2 & (ds.RATIO <= 0.15)
 
     # Wind Speed refined levels
     ws_threshold = 7.3
@@ -382,21 +382,33 @@ def dust_algorithm(
     t3_ws = fill_gaps(t3_ws)
 
     # 6. Final Dust Product
-    # More robust detection: Require either a low PM2.5/PM10 ratio (T2)
-    # or high wind speeds (G2_WS) to support the PM10 elevation.
-    # This reduces false positives from local pollution or stagnant air.
-    dust = t2 | g2_ws
+    # More robust detection: Require a low PM2.5/PM10 ratio (T2)
+    # and either the PM10 threshold (G2) or high wind speeds (G2_WS).
+    # If PM2.5 is missing, we rely on PM10 and Wind Speed (lower confidence).
+
+    # Strictly require ratio < 0.25 if available
+    ratio_check = (ds.RATIO < 0.25) | ds.RATIO.isnull()
+
+    dust = (t2 | g2_ws) & ratio_check
 
     # Add RH dependence if available
     if "RH" in ds.data_vars:
         dust = dust & (ds.RH < 40.0)
 
+    # Add Temperature filter (exclude freezing temps to avoid road salt)
+    if "TEMP" in ds.data_vars:
+        dust = dust & (ds.TEMP > 0.0)
+
     # 7. Method classification
     method = xr.full_like(dust, "NONE", dtype="U10")
-    method = xr.where(dust & g2 & t2 & ~t2_ws & ~g2_ws, "T2", method)
-    method = xr.where(dust & g2 & ~t2 & ~t2_ws & ~g2_ws, "G2", method)
-    method = xr.where(dust & g2 & t2 & t2_ws & g2_ws, "T2+WS", method)
-    method = xr.where(dust & g2 & ~t2 & ~t2_ws & g2_ws, "G2+WS", method)
+    # T2: High PM10 + Low Ratio
+    method = xr.where(dust & t2 & ~g2_ws, "T2", method)
+    # G2+WS: High PM10 + High Wind (and low ratio if available)
+    method = xr.where(dust & ~t2 & g2_ws, "G2+WS", method)
+    # T2+WS: High PM10 + Low Ratio + High Wind
+    method = xr.where(dust & t2 & g2_ws, "T2+WS", method)
+    # G2: Just high PM10 (should be rare with above logic but kept for completeness)
+    method = xr.where(dust & g2 & ~t2 & ~g2_ws, "G2", method)
 
     # Add to dataset
     ds["G1"] = g1
@@ -616,6 +628,30 @@ def get_and_clean_obs(
     # Rename PM2.5 to PM25 for consistency
     if "PM2.5" in ds.data_vars:
         ds = ds.rename({"PM2.5": "PM25"})
+
+    # Ensure only dedicated PM10 monitors are used
+    if "PM10" in ds.data_vars:
+        # 1. Drop sites that have no PM10 data at all
+        has_pm10 = ds.PM10.notnull().any(dim="time").compute()
+        ds = ds.sel(siteid=has_pm10)
+
+        # 2. Drop sites where PM10 is suspiciously correlated with PM2.5
+        # (Indicates calculated PM10 from PM2.5 only sensors)
+        if "PM25" in ds.data_vars:
+            # Check for constant ratio or identical values
+            ratio = ds.PM25 / ds.PM10
+            # We use a small epsilon for float comparison
+            is_constant = ratio.std(dim="time") < 1e-5
+            is_same = (ds.PM10 == ds.PM25).all(dim="time")
+
+            # Compute suspicious mask
+            suspicious = (is_constant | is_same).compute()
+            if suspicious.any():
+                print(
+                    f"Dropping {int(suspicious.sum())} sites with suspicious "
+                    "PM10/PM2.5 correlation."
+                )
+                ds = ds.sel(siteid=~suspicious)
 
     if with_met:
         ds = add_met_to_airnow(ds)

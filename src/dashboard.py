@@ -7,7 +7,6 @@ Architected by Aero 🍃⚡
 
 import os
 
-import numpy as np
 import pandas as pd
 import panel as pn
 import xarray as xr
@@ -79,11 +78,17 @@ def build_dashboard(days: int = 90) -> pn.Column:
         dust_hours = int(ds_conf.time.size)
 
         # Total days with dust events (QC > 1)
-        dust_days = int(len(np.unique(ds_conf.time.dt.floor("1D"))))
+        # Redefined: At least 3 sites must report dust on the same day
+        sites_per_day = mask.resample(time="1D").max(dim="time").sum(dim="siteid")
+        dust_days = int((sites_per_day >= 3).sum())
+
+        # Regional Events: At least 6 sites on the same day
+        regional_events = int((sites_per_day >= 6).sum())
     else:
         dust_sites = 0
         dust_hours = 0
         dust_days = 0
+        regional_events = 0
 
     print("Creating visualizations...")
     # 1. Interactive map (Track B) - Daily Max
@@ -138,6 +143,13 @@ def build_dashboard(days: int = 90) -> pn.Column:
             font_size="20pt",
             title_size="10pt",
         ),
+        pn.indicators.Number(
+            name="Significant Regional Events",
+            value=regional_events,
+            format="{value}",
+            font_size="20pt",
+            title_size="10pt",
+        ),
         sizing_mode="stretch_width",
     )
 
@@ -153,7 +165,11 @@ def build_dashboard(days: int = 90) -> pn.Column:
             """
         ),
         pn.pane.Markdown("## Summary Statistics"),
-        pn.pane.Markdown("*Statistics reflect high-confidence events (QC > 1)*"),
+        pn.pane.Markdown(
+            "*Statistics reflect high-confidence events (QC > 1). "
+            "Days with Dust Events requires ≥3 sites. "
+            "Regional Events requires ≥6 sites.*"
+        ),
         indicators,
         pn.pane.Markdown("> **Note**: QC=0 indicates no dust detected."),
         pn.pane.Markdown("## Data Sources"),
