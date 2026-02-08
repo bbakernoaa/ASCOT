@@ -198,7 +198,7 @@ def test_add_met_to_airnow():
     )
     ds = ds.set_coords(["latitude", "longitude"])
 
-    # Mock return value for monetio.load
+    # Mock return value for fetch_isd_lite
     mock_ds_ish = xr.Dataset(
         {
             "temp": (("time", "siteid"), [[20.0], [21.0]]),
@@ -213,7 +213,7 @@ def test_add_met_to_airnow():
         },
     )
 
-    with patch("monetio.load", return_value=mock_ds_ish):
+    with patch("dust.fetch_isd_lite", return_value=mock_ds_ish):
         ds_out = add_met_to_airnow(ds)
 
         assert "TEMP" in ds_out
@@ -358,18 +358,18 @@ def test_add_met_to_airnow_no_ish_data():
     ds.coords["longitude"] = (("siteid"), [-100.0, -101.0])
     ds = ds.set_coords(["latitude", "longitude"])
 
-    with patch("monetio.load", return_value=None):
+    with patch("dust.fetch_isd_lite", return_value=None):
         res = add_met_to_airnow(ds)
         assert "TEMP" not in res.data_vars
 
 
 def test_add_met_to_airnow_error():
-    """Test add_met_to_airnow when monetio.load raises an error."""
+    """Test add_met_to_airnow when fetch_isd_lite raises an error."""
     ds = create_mock_ds()
     ds.coords["latitude"] = (("siteid"), [40.0, 41.0])
     ds.coords["longitude"] = (("siteid"), [-100.0, -101.0])
     ds = ds.set_coords(["latitude", "longitude"])
 
-    with patch("monetio.load", side_effect=Exception("Fetch error")):
+    with patch("dust.fetch_isd_lite", side_effect=Exception("Fetch error")):
         res = add_met_to_airnow(ds)
         assert "TEMP" not in res.data_vars

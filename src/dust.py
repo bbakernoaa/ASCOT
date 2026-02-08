@@ -5,6 +5,8 @@ Dust Detection Algorithm using Hourly EPA AQS/AIRNOW Surface Monitors.
 Architected by Aero 🍃⚡
 """
 
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -44,6 +46,78 @@ def fill_gaps(da: xr.DataArray, dim: str = "time", limit: int = 1) -> xr.DataArr
     )
 
 
+def fetch_isd_lite(dates: pd.DatetimeIndex, box: list[float]) -> Optional[xr.Dataset]:
+    """
+    Fetch ISD-Lite data for a given date range and bounding box.
+    Robustly handles missing files and metadata issues.
+
+    Parameters
+    ----------
+    dates : pd.DatetimeIndex
+        Date range to fetch.
+    box : list of float
+        Bounding box [latmin, lonmin, latmax, lonmax].
+
+    Returns
+    -------
+    xr.Dataset or None
+        Fetched dataset or None if no data found.
+    """
+    try:
+        from monetio.obs.ish_lite import ISH
+        from monetio.readers.ish_lite import ISHLiteReader
+    except ImportError:
+        print("monetio not installed. Cannot fetch met data.")
+        return None
+
+    try:
+        ish = ISH()
+        ish.dates = dates
+        ish.read_ish_history()
+        dfloc = ish.subset_sites(
+            latmin=box[0], lonmin=box[1], latmax=box[2], lonmax=box[3]
+        )
+
+        urls = ish.build_urls(sites=dfloc)
+        if urls.empty:
+            print("No ISD-Lite stations found in box.")
+            return None
+
+        # Robust aggregation: skip files that fail to load (e.g. 404)
+        import dask
+
+        @dask.delayed
+        def safe_read_csv(url):
+            try:
+                return ish.read_csv(url)
+            except Exception as e:
+                print(f"Skipping {url}: {e}")
+                return pd.DataFrame()
+
+        # Use dask.compute on the list of delayed objects to get real DataFrames
+        dfs = dask.compute(*[safe_read_csv(url) for url in urls.name])
+        df_ish = pd.concat([df for df in dfs if not df.empty], ignore_index=True)
+
+        if df_ish.empty:
+            print("No ISD-Lite data successfully fetched.")
+            return None
+
+        # Harmonize and convert to xarray
+        reader = ISHLiteReader()
+        df_ish = reader.harmonize(df_ish)
+        # Filter to requested dates
+        df_ish = df_ish.loc[(df_ish.time >= dates.min()) & (df_ish.time <= dates.max())]
+        # Merge with station info
+        df_ish = pd.merge(
+            df_ish, dfloc, how="left", left_on="siteid", right_on="station_id"
+        ).rename(columns={"ctry": "country"})
+
+        return reader.to_xarray(df_ish)
+    except Exception as e:
+        print(f"Error fetching ISD-Lite data: {e}")
+        return None
+
+
 def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
     """
     Supplement AirNow dataset with ISD-Lite meteorological data.
@@ -58,12 +132,6 @@ def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
     xr.Dataset
         Dataset with supplemented meteorological variables.
     """
-    try:
-        import monetio
-    except ImportError:
-        print("monetio not installed. Cannot add met data.")
-        return ds
-
     from scipy.spatial import cKDTree
 
     # Get date range from ds
@@ -83,13 +151,12 @@ def add_met_to_airnow(ds: xr.Dataset) -> xr.Dataset:
 
     # Fetch ISD-Lite data
     print(f"Fetching ISD-Lite data for box {box}...")
+    ish_dates = pd.date_range(start, end, freq="h")
     try:
-        # Use a slightly wider date range to ensure coverage
-        ish_dates = pd.date_range(start, end, freq="h")
-        ds_ish = monetio.load("ish_lite", dates=ish_dates, box=box, as_xarray=True)
+        ds_ish = fetch_isd_lite(ish_dates, box)
     except Exception as e:
-        print(f"Error fetching ISD-Lite data: {e}")
-        return ds
+        print(f"Unexpected error during ISD-Lite fetch: {e}")
+        ds_ish = None
 
     if ds_ish is None:
         print("No ISD-Lite data found.")
@@ -520,6 +587,22 @@ def get_and_clean_obs(
     if ds is None:
         raise ValueError(f"No data found for {source} between {start} and {end}")
 
+    # Fix for StringDtype compatibility (Pandas 3.0+)
+    for var in ds.variables:
+        if isinstance(ds[var].dtype, pd.StringDtype):
+            ds[var] = ds[var].astype(object)
+
+    # Manually filter by box if provided
+    if "box" in kwargs:
+        b = kwargs["box"]
+        ds = ds.where(
+            (ds.latitude >= b[0])
+            & (ds.longitude >= b[1])
+            & (ds.latitude <= b[2])
+            & (ds.longitude <= b[3]),
+            drop=True,
+        )
+
     # Cleaning for xarray
     for var in ["PM10", "PM2.5", "WS", "CO"]:
         if var in ds.data_vars:
@@ -536,13 +619,6 @@ def get_and_clean_obs(
     # Use '1h' (lowercase) for Pandas 3.0+ compatibility
     if "time" in ds.dims:
         ds = ds.resample(time="1h").mean()
-
-    # Fix for StringDtype compatibility with Dask
-    # Pandas 3.0+ uses StringDtype by default for strings,
-    # but Dask 2024.x and earlier still have issues interpreting it.
-    for var in ds.variables:
-        if isinstance(ds[var].dtype, pd.StringDtype):
-            ds[var] = ds[var].astype(object)
 
     return ds
 
