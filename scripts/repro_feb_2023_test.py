@@ -1,5 +1,6 @@
 """
 Script to reproduce the Feb 2023 Dust Detection test.
+
 Architected by Aero 🍃⚡
 """
 
@@ -11,6 +12,7 @@ from dust import dust_algorithm, get_and_clean_obs
 
 
 def run_feb_2023_test():
+    """Run the dust detection algorithm for the Feb 2023 test period."""
     start = "2023-02-12"
     end = "2023-02-28"
 

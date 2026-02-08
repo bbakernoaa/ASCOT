@@ -1,8 +1,7 @@
-"""
-Generate a dashboard from processed dust detection results.
-"""
+"""Generate a dashboard from processed dust detection results."""
 
 import os
+import sys
 
 import panel as pn
 import xarray as xr
@@ -11,6 +10,16 @@ from viz import plot_dust_interactive, plot_dust_timeseries
 
 
 def build_dashboard(nc_file, output_html):
+    """
+    Build and save a dashboard from a NetCDF file.
+
+    Parameters
+    ----------
+    nc_file : str
+        Path to the input NetCDF file.
+    output_html : str
+        Path to save the output HTML file.
+    """
     print(f"Loading {nc_file}...")
     ds = xr.open_dataset(nc_file)
 
@@ -39,8 +48,6 @@ def build_dashboard(nc_file, output_html):
 
 
 if __name__ == "__main__":
-    import sys
-
     if len(sys.argv) > 1:
         build_dashboard(
             sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "dashboard.html"
