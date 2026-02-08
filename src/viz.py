@@ -108,10 +108,20 @@ def plot_dust_static(
 
     # Plot events
     if len(events.siteid) > 0:
+        # Convert to dataframe for easier sorting
+        events_df = (
+            events[[var]]
+            .assign_coords(latitude=lat_valid, longitude=lon_valid)
+            .to_dataframe()
+            .reset_index()
+        )
+        # Sort by var so higher values are plotted last (on top)
+        events_df = events_df.sort_values(by=var, ascending=True)
+
         im = ax.scatter(
-            lon_valid.sel(siteid=events.siteid),
-            lat_valid.sel(siteid=events.siteid),
-            c=events[var],
+            events_df.longitude,
+            events_df.latitude,
+            c=events_df[var],
             s=50,
             cmap="autumn_r",
             edgecolor="black",
@@ -171,6 +181,10 @@ def plot_dust_interactive(
     # Convert to dataframe
     df = ds_to_plot[available_cols].to_dataframe().reset_index()
     df["time"] = pd.to_datetime(df["time"])
+
+    # Ensure higher confidence values are plotted on top
+    if var in df.columns:
+        df = df.sort_values(by=var, ascending=True)
 
     plot = df.hvplot.points(
         x="longitude",

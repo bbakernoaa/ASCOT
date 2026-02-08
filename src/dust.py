@@ -96,7 +96,8 @@ def fetch_isd_lite(dates: pd.DatetimeIndex, box: list[float]) -> Optional[xr.Dat
                 return pd.DataFrame()
 
         # Use dask.compute on the list of delayed objects to get real DataFrames
-        dfs = dask.compute(*[safe_read_csv(url) for url in urls.name])
+        url_list = urls["name"] if "name" in urls else urls
+        dfs = dask.compute(*[safe_read_csv(url) for url in url_list])
         df_ish = pd.concat([df for df in dfs if not df.empty], ignore_index=True)
 
         if df_ish.empty:
