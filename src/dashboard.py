@@ -7,6 +7,7 @@ Architected by Aero 🍃⚡
 
 import os
 
+import numpy as np
 import pandas as pd
 import panel as pn
 import xarray as xr
@@ -41,6 +42,7 @@ def build_dashboard(days: int = 90) -> pn.Column:
             source="airnow",
             start=start_date.strftime("%Y-%m-%d"),
             end=end_date.strftime("%Y-%m-%d"),
+            with_met=True,
         )
     except Exception as e:
         print(f"Error fetching data: {e}")
@@ -52,6 +54,7 @@ def build_dashboard(days: int = 90) -> pn.Column:
             source="airnow",
             start=start_date.strftime("%Y-%m-%d"),
             end=end_date.strftime("%Y-%m-%d"),
+            with_met=True,
         )
 
     # Use Dask for processing
@@ -62,11 +65,25 @@ def build_dashboard(days: int = 90) -> pn.Column:
 
     # Compute for summary stats
     print("Computing summary statistics...")
-    # Count unique site-time combinations with valid PM10 data
-    # This fulfills the "unique sites in space and time" requirement
-    total_obs = int(ds.PM10.notnull().sum().compute())
-    has_dust_mask = ds.DUST.any(dim="time").compute()
-    dust_sites = int(has_dust_mask.sum())
+    # Filter for confidence level > 1 (QC > 1) as requested
+    # Compute mask first to avoid dask boolean indexing error in xarray
+    mask = (ds.QC > 1).compute()
+    ds_conf = ds.where(mask, drop=True)
+
+    if "time" in ds_conf.dims and ds_conf.time.size > 0:
+        # Total sites with dust events (QC > 1)
+        dust_sites = int(ds_conf.siteid.size)
+
+        # Total hours with dust events (QC > 1)
+        # Count unique hours where at least one site has an event
+        dust_hours = int(ds_conf.time.size)
+
+        # Total days with dust events (QC > 1)
+        dust_days = int(len(np.unique(ds_conf.time.dt.floor("1D"))))
+    else:
+        dust_sites = 0
+        dust_hours = 0
+        dust_days = 0
 
     print("Creating visualizations...")
     # 1. Interactive map (Track B) - Daily Max
@@ -83,22 +100,43 @@ def build_dashboard(days: int = 90) -> pn.Column:
     # We use hourly data for the time series but only for sites that had dust
     ts_plot = plot_dust_timeseries(ds, var="PM10")
 
+    # Link selections for bidirectional interactivity
+    # This allows box selection on the map to filter the time series and vice versa
+    try:
+        from holoviews.selection import link_selections
+
+        linker = link_selections.instance()
+        linked_plots = linker(interactive_map + ts_plot).cols(1)
+        map_final = linked_plots[0]
+        ts_final = linked_plots[1]
+    except Exception as e:
+        print(f"Error linking selections: {e}")
+        map_final = interactive_map
+        ts_final = ts_plot
+
     # Indicators for Sidebar
     indicators = pn.Column(
         pn.indicators.Number(
-            name="Site Count (Space-Time)",
-            value=total_obs,
+            name="Days with Dust Events",
+            value=dust_days,
             format="{value}",
-            font_size="24pt",
-            title_size="12pt",
+            font_size="20pt",
+            title_size="10pt",
+        ),
+        pn.indicators.Number(
+            name="Hours with Dust Events",
+            value=dust_hours,
+            format="{value}",
+            font_size="20pt",
+            title_size="10pt",
         ),
         pn.indicators.Number(
             name="Sites with Dust Events",
             value=dust_sites,
             format="{value}",
             colors=[(0.1, "green"), (1, "red")],
-            font_size="24pt",
-            title_size="12pt",
+            font_size="20pt",
+            title_size="10pt",
         ),
         sizing_mode="stretch_width",
     )
@@ -115,7 +153,9 @@ def build_dashboard(days: int = 90) -> pn.Column:
             """
         ),
         pn.pane.Markdown("## Summary Statistics"),
+        pn.pane.Markdown("*Statistics reflect high-confidence events (QC > 1)*"),
         indicators,
+        pn.pane.Markdown("> **Note**: QC=0 indicates no dust detected."),
         pn.pane.Markdown("## Data Sources"),
         pn.pane.Markdown(
             """
@@ -145,13 +185,13 @@ def build_dashboard(days: int = 90) -> pn.Column:
             f"### Monitoring Period: {start_date.date()} to {end_date.date()}"
         ),
         pn.Card(
-            interactive_map,
+            map_final,
             title="Daily Max Dust Confidence (QC: 0=None, 1=Low, 2=Med, 3=High)",
             sizing_mode="stretch_both",
         ),
         pn.Card(
-            ts_plot,
-            title="PM10 Spaghetti Plot (Sites with Detected Dust)",
+            ts_final,
+            title="PM10 Spaghetti Plot (Use Box Select on map to filter sites)",
             sizing_mode="stretch_both",
         ),
     ]
