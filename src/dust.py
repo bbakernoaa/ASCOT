@@ -382,7 +382,10 @@ def dust_algorithm(
     t3_ws = fill_gaps(t3_ws)
 
     # 6. Final Dust Product
-    dust = t2 | g2 | g2_ws | t2_ws
+    # More robust detection: Require either a low PM2.5/PM10 ratio (T2)
+    # or high wind speeds (G2_WS) to support the PM10 elevation.
+    # This reduces false positives from local pollution or stagnant air.
+    dust = t2 | g2_ws
 
     # Add RH dependence if available
     if "RH" in ds.data_vars:
