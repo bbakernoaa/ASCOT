@@ -49,6 +49,7 @@ def fill_gaps(da: xr.DataArray, dim: str = "time", limit: int = 1) -> xr.DataArr
 def fetch_isd_lite(dates: pd.DatetimeIndex, box: list[float]) -> Optional[xr.Dataset]:
     """
     Fetch ISD-Lite data for a given date range and bounding box.
+
     Robustly handles missing files and metadata issues.
 
     Parameters
