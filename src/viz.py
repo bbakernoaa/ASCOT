@@ -278,7 +278,11 @@ def plot_dust_timeseries(
                 size=40,
                 marker="circle",
                 alpha=0.8,
-                hover_cols=["siteid", "time", "QC"] if "QC" in dust_df.columns else ["siteid", "time"],
+                hover_cols=(
+                    ["siteid", "time", "QC"]
+                    if "QC" in dust_df.columns
+                    else ["siteid", "time"]
+                ),
                 legend=False,
             )
             return lines * markers
