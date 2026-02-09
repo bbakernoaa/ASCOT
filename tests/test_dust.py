@@ -123,15 +123,15 @@ def test_dust_algorithm_duration_filter():
 
 def test_dust_algorithm_rh():
     """Verify RH dependence in dust algorithm."""
-    # Create synthetic dataset
-    time = pd.date_range("2023-01-01", periods=10, freq="h")
+    # Create synthetic dataset - Use 5 hours to stay within 3-10h duration window
+    time = pd.date_range("2023-01-01", periods=5, freq="h")
     siteid = ["site1"]
     ds = xr.Dataset(
         {
-            "PM10": (("time", "siteid"), np.full((10, 1), 200.0)),
-            "PM25": (("time", "siteid"), np.full((10, 1), 20.0)),
-            "WS": (("time", "siteid"), np.full((10, 1), 10.0)),
-            "RH": (("time", "siteid"), np.full((10, 1), 50.0)),  # Above 40
+            "PM10": (("time", "siteid"), np.full((5, 1), 200.0)),
+            "PM25": (("time", "siteid"), np.full((5, 1), 20.0)),
+            "WS": (("time", "siteid"), np.full((5, 1), 10.0)),
+            "RH": (("time", "siteid"), np.full((5, 1), 50.0)),  # Above 40
         },
         coords={"time": time, "siteid": siteid},
     )
@@ -142,7 +142,7 @@ def test_dust_algorithm_rh():
     assert not ds_out.DUST.any()
 
     # Set RH < 40
-    ds["RH"] = (("time", "siteid"), np.full((10, 1), 30.0))
+    ds["RH"] = (("time", "siteid"), np.full((5, 1), 30.0))
     ds_out = dust_algorithm(ds)
     # Should be True
     assert ds_out.DUST.any()
@@ -245,17 +245,18 @@ def test_get_and_clean_obs():
 
 def test_theoretical_real_dust_event():
     """Verify detection of a high-confidence theoretical dust event."""
-    times = pd.date_range("2023-01-01", periods=10, freq="h")
+    # Use 5 hours to stay within 3-10h duration window
+    times = pd.date_range("2023-01-01", periods=5, freq="h")
     siteid = ["site1"]
 
     # Values that should trigger T2+WS (High confidence)
-    # PM10 > 140, PM25/PM10 <= 0.26, WS > 7.3, RH < 40
+    # PM10 > 150 (mean), PM10 >= 180 (max), PM25/PM10 <= 0.25, WS > 7.3, RH < 40
     ds = xr.Dataset(
         {
-            "PM10": (("time", "siteid"), np.full((10, 1), 200.0)),
-            "PM25": (("time", "siteid"), np.full((10, 1), 40.0)),  # Ratio = 0.2
-            "WS": (("time", "siteid"), np.full((10, 1), 10.0)),
-            "RH": (("time", "siteid"), np.full((10, 1), 20.0)),
+            "PM10": (("time", "siteid"), np.full((5, 1), 200.0)),
+            "PM25": (("time", "siteid"), np.full((5, 1), 40.0)),  # Ratio = 0.2
+            "WS": (("time", "siteid"), np.full((5, 1), 10.0)),
+            "RH": (("time", "siteid"), np.full((5, 1), 20.0)),
         },
         coords={"time": times, "siteid": siteid},
     )
