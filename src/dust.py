@@ -269,8 +269,8 @@ def start_end_duration(ds: xr.Dataset, column: str = "DUST", time_dim: str = "ti
 
 def dust_algorithm(
     ds: xr.Dataset,
-    lower_threshold: float = 100.0,
-    upper_threshold: float = 150.0,
+    lower_threshold: float = 150.0,
+    upper_threshold: float = 180.0,
     dynamic_threshold: bool = False,
 ) -> xr.Dataset:
     """
@@ -334,13 +334,14 @@ def dust_algorithm(
     else:
         pm10_lower_thr = lower_threshold
 
-    pm10_upper_thr = 180.0
+    pm10_upper_thr = upper_threshold
     pm10_98_thr = 85.0
 
     # 4. Dust Levels (G-series and T-series)
+    # G2 is the primary Ganor-based level: Mean > 150, Max > 180
     g1 = (pm10_rmean > pm10_lower_thr) & (pm10_rmax >= pm10_upper_thr)
-    g2 = (pm10_rmean > pm10_lower_thr) & (pm10_rmax >= upper_threshold)
-    g3 = (pm10_rmean > pm10_98_thr) & (pm10_rmax >= upper_threshold)
+    g2 = (pm10_rmean > pm10_lower_thr) & (pm10_rmax >= pm10_upper_thr)
+    g3 = (pm10_rmean > pm10_98_thr) & (pm10_rmax >= pm10_upper_thr)
 
     t1 = g2 & (ds.RATIO <= 0.40)
     t2 = g2 & (ds.RATIO <= 0.25)
@@ -411,8 +412,9 @@ def dust_algorithm(
     # 8. Start Date and Duration calculation
     ds = start_end_duration(ds, column="DUST")
 
-    # 9. 72-hour duration filter
-    too_long = ds.DURATION > 72.0
+    # 9. Duration filter: 3-10 hours
+    # Enforce sustained event: >= 3 hours AND < 10 hours
+    invalid_duration = (ds.DURATION < 3.0) | (ds.DURATION >= 10.0)
     for var in [
         "DUST",
         "G1",
@@ -426,10 +428,10 @@ def dust_algorithm(
         "G3_WS",
         "T3_WS",
     ]:
-        ds[var] = xr.where(too_long, False, ds[var])
-    ds["Method"] = xr.where(too_long, "NONE", ds["Method"])
-    ds["START_DATE"] = xr.where(too_long, np.datetime64("NaT"), ds["START_DATE"])
-    ds["DURATION"] = xr.where(too_long, np.nan, ds["DURATION"])
+        ds[var] = xr.where(invalid_duration, False, ds[var])
+    ds["Method"] = xr.where(invalid_duration, "NONE", ds["Method"])
+    ds["START_DATE"] = xr.where(invalid_duration, np.datetime64("NaT"), ds["START_DATE"])
+    ds["DURATION"] = xr.where(invalid_duration, np.nan, ds["DURATION"])
 
     # 10. Quality Control
     ds = get_quality(ds)

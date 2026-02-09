@@ -14,12 +14,13 @@ def test_cli_csv_output(tmp_path):
 
     # Mock data ingestion
     # We provide enough data for the algorithm to run
-    times = pd.date_range("2023-01-01", periods=10, freq="h")
+    # Use 5 hours to stay within 3-10h duration window
+    times = pd.date_range("2023-01-01", periods=5, freq="h")
     mock_ds = xr.Dataset(
         {
-            "PM10": (("time", "siteid"), np.full((10, 1), 200.0)),
-            "PM25": (("time", "siteid"), np.full((10, 1), 40.0)),
-            "WS": (("time", "siteid"), np.full((10, 1), 10.0)),
+            "PM10": (("time", "siteid"), np.full((5, 1), 200.0)),
+            "PM25": (("time", "siteid"), np.full((5, 1), 40.0)),
+            "WS": (("time", "siteid"), np.full((5, 1), 10.0)),
         },
         coords={"time": times, "siteid": ["site1"]},
     )
@@ -51,12 +52,13 @@ def test_cli_netcdf_output(tmp_path):
     """Test CLI with NetCDF output."""
     output_file = tmp_path / "test_output.nc"
 
-    times = pd.date_range("2023-01-01", periods=10, freq="h")
+    # Use 5 hours to stay within 3-10h duration window
+    times = pd.date_range("2023-01-01", periods=5, freq="h")
     mock_ds = xr.Dataset(
         {
-            "PM10": (("time", "siteid"), np.full((10, 1), 200.0)),
-            "PM25": (("time", "siteid"), np.full((10, 1), 40.0)),
-            "WS": (("time", "siteid"), np.full((10, 1), 10.0)),
+            "PM10": (("time", "siteid"), np.full((5, 1), 200.0)),
+            "PM25": (("time", "siteid"), np.full((5, 1), 40.0)),
+            "WS": (("time", "siteid"), np.full((5, 1), 10.0)),
         },
         coords={"time": times, "siteid": ["site1"]},
     )
