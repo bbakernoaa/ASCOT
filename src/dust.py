@@ -334,18 +334,18 @@ def dust_algorithm(
     else:
         pm10_lower_thr = lower_threshold
 
-    pm10_upper_thr = upper_threshold
+    pm10_upper_thr = 180.0
     pm10_98_thr = 85.0
 
     # 4. Dust Levels (G-series and T-series)
     # G2 is the primary Ganor-based level: Mean > 150, Max > 180
     g1 = (pm10_rmean > pm10_lower_thr) & (pm10_rmax >= pm10_upper_thr)
-    g2 = (pm10_rmean > pm10_lower_thr) & (pm10_rmax >= pm10_upper_thr)
-    g3 = (pm10_rmean > pm10_98_thr) & (pm10_rmax >= pm10_upper_thr)
+    g2 = (pm10_rmean > pm10_lower_thr) & (pm10_rmax >= upper_threshold)
+    g3 = (pm10_rmean > pm10_98_thr) & (pm10_rmax >= upper_threshold)
 
-    t1 = g2 & (ds.RATIO <= 0.40)
-    t2 = g2 & (ds.RATIO <= 0.25)
-    t3 = g2 & (ds.RATIO <= 0.15)
+    t1 = g2 & (ds.RATIO <= 0.35)
+    t2 = g2 & (ds.RATIO <= 0.26)
+    t3 = g2 & (ds.RATIO <= 0.20)
 
     # Wind Speed refined levels
     ws_threshold = 7.3
@@ -367,14 +367,10 @@ def dust_algorithm(
     t3_ws = fill_gaps(t3_ws)
 
     # 6. Final Dust Product
-    # More robust detection: Require a low PM2.5/PM10 ratio (T2)
-    # and either the PM10 threshold (G2) or high wind speeds (G2_WS).
-    # If PM2.5 is missing, we rely on PM10 and Wind Speed (lower confidence).
+    # Strictly require ratio <= 0.26 if available
+    ratio_check = (ds.RATIO <= 0.26) | ds.RATIO.isnull()
 
-    # Strictly require ratio < 0.25 if available
-    ratio_check = (ds.RATIO < 0.25) | ds.RATIO.isnull()
-
-    dust = (t2 | g2_ws) & ratio_check
+    dust = g2 & ratio_check
 
     # Add RH dependence if available
     if "RH" in ds.data_vars:
@@ -412,9 +408,8 @@ def dust_algorithm(
     # 8. Start Date and Duration calculation
     ds = start_end_duration(ds, column="DUST")
 
-    # 9. Duration filter: 3-10 hours
-    # Enforce sustained event: >= 3 hours AND < 10 hours
-    invalid_duration = (ds.DURATION < 3.0) | (ds.DURATION >= 10.0)
+    # 9. 72-hour duration filter
+    too_long = ds.DURATION > 72.0
     for var in [
         "DUST",
         "G1",
@@ -428,10 +423,10 @@ def dust_algorithm(
         "G3_WS",
         "T3_WS",
     ]:
-        ds[var] = xr.where(invalid_duration, False, ds[var])
-    ds["Method"] = xr.where(invalid_duration, "NONE", ds["Method"])
-    ds["START_DATE"] = xr.where(invalid_duration, np.datetime64("NaT"), ds["START_DATE"])
-    ds["DURATION"] = xr.where(invalid_duration, np.nan, ds["DURATION"])
+        ds[var] = xr.where(too_long, False, ds[var])
+    ds["Method"] = xr.where(too_long, "NONE", ds["Method"])
+    ds["START_DATE"] = xr.where(too_long, np.datetime64("NaT"), ds["START_DATE"])
+    ds["DURATION"] = xr.where(too_long, np.nan, ds["DURATION"])
 
     # 10. Quality Control
     ds = get_quality(ds)
