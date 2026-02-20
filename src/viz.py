@@ -22,8 +22,10 @@ try:
     import holoviews as hv
     import hvplot.pandas  # noqa: F401
     import hvplot.xarray  # noqa: F401
+    import panel as pn
 except ImportError:
     hv = None
+    pn = None
 
 
 def plot_dust_static(
@@ -137,6 +139,7 @@ def plot_dust_static(
 def plot_dust_heatmap(
     ds: xr.Dataset,
     var: str = "PM10",
+    logz: bool = False,
     **kwargs: Any,
 ) -> Any:
     """
@@ -179,11 +182,19 @@ def plot_dust_heatmap(
 
     # Heatmap
     # We use heatmap to show PM10 over time for each site
+    # Set clim if logz to avoid 0/negative value issues
+    heatmap_kwargs = {}
+    if logz:
+        # PM10 typical range 1 to 5000+
+        heatmap_kwargs["clim"] = (1, df[var].max() if not df.empty else 1000)
+
     heatmap = df.hvplot.heatmap(
         x="time",
         y="siteid",
         C=var,
         cmap="viridis",
+        logz=logz,
+        **heatmap_kwargs,
         title=f"Regional Timeline of {var} (Heatmap)",
         xlabel="Time",
         ylabel="Site ID",
@@ -199,6 +210,8 @@ def plot_dust_interactive(
     ds: xr.Dataset,
     var: str = "DUST",
     rasterize: bool = False,
+    widget_type: Optional[str] = None,
+    logz: bool = False,
     **kwargs: Any,
 ) -> Any:
     """
@@ -242,6 +255,11 @@ def plot_dust_interactive(
     if var in df.columns:
         df = df.sort_values(by=var, ascending=True)
 
+    # Determine widgets
+    widgets = {}
+    if widget_type == "dropdown" and pn is not None:
+        widgets["time"] = pn.widgets.Select
+
     plot = df.hvplot.points(
         x="longitude",
         y="latitude",
@@ -249,9 +267,11 @@ def plot_dust_interactive(
         geo=True,
         tiles="OSM",
         cmap="autumn_r",
+        logz=logz,
         hover_cols=["siteid", "time", "PM10", "Method"],
         title=f"Dust Detection: {var}",
         groupby="time",
+        widgets=widgets,
         dynamic=False,
         xlim=(-125, -65),
         ylim=(25, 50),

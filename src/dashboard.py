@@ -99,11 +99,11 @@ def build_dashboard(days: int = 90) -> pn.Column:
     if isinstance(ds_daily, xr.DataArray):
         ds_daily = ds_daily.to_dataset()
 
-    interactive_map = plot_dust_interactive(ds_daily, var="QC")
+    interactive_map = plot_dust_interactive(ds_daily, var="QC", widget_type="dropdown")
 
     # 2. Regional Timeline Heatmap
     # We use hourly data for the heatmap but only for sites that had dust
-    ts_plot = plot_dust_heatmap(ds, var="PM10")
+    ts_plot = plot_dust_heatmap(ds, var="PM10", logz=True)
 
     # Link selections for bidirectional interactivity
     # This allows box selection on the map to filter the heatmap and vice versa
@@ -202,11 +202,13 @@ def build_dashboard(days: int = 90) -> pn.Column:
             map_final,
             title="Daily Max Dust Confidence (QC: 0=None, 1=Low, 2=Med, 3=High)",
             sizing_mode="stretch_both",
+            min_height=450,
         ),
         pn.Card(
             ts_final,
             title="Regional Timeline: PM10 Heatmap (Use Box Select on map to filter sites)",
             sizing_mode="stretch_both",
+            min_height=450,
         ),
     ]
 
@@ -221,17 +223,24 @@ def build_dashboard(days: int = 90) -> pn.Column:
         sizing_mode="stretch_width",
     )
 
-    # Compose Layout
+    # Compose Layout with FlexBox for mobile responsiveness
+    # Items will wrap on small screens
     dashboard = pn.Column(
         header,
-        pn.Row(
+        pn.FlexBox(
             pn.Column(
                 *sidebar,
                 width=320,
+                min_width=300,
                 sizing_mode="stretch_height",
                 styles={"background": "#f8f9fa", "padding": "10px"},
             ),
-            pn.Column(*main, sizing_mode="stretch_both", styles={"padding": "10px"}),
+            pn.Column(
+                *main,
+                sizing_mode="stretch_both",
+                min_width=320,
+                styles={"padding": "10px"},
+            ),
             sizing_mode="stretch_both",
         ),
         sizing_mode="stretch_both",
