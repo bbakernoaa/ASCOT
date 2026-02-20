@@ -57,7 +57,9 @@ def build_dashboard(days: int = 90) -> pn.Column:
         )
 
     # Use Dask for processing
-    ds = ds.chunk({"siteid": 100})
+    chunk_dim = "siteid" if "siteid" in ds.dims else "node"
+    if chunk_dim in ds.dims:
+        ds = ds.chunk({chunk_dim: 100})
 
     print("Running Dust Algorithm...")
     ds = dust_algorithm(ds)
@@ -69,9 +71,12 @@ def build_dashboard(days: int = 90) -> pn.Column:
     mask = (ds.QC > 1).compute()
     ds_conf = ds.where(mask, drop=True)
 
+    # Identify site dimension (siteid or node)
+    site_dim = "siteid" if "siteid" in ds.dims else "node"
+
     if "time" in ds_conf.dims and ds_conf.time.size > 0:
         # Total sites with dust events (QC > 1)
-        dust_sites = int(ds_conf.siteid.size)
+        dust_sites = int(ds_conf[site_dim].size)
 
         # Total hours with dust events (QC > 1)
         # Count unique hours where at least one site has an event
@@ -79,7 +84,7 @@ def build_dashboard(days: int = 90) -> pn.Column:
 
         # Total days with dust events (QC > 1)
         # Redefined: At least 3 sites must report dust on the same day
-        sites_per_day = mask.resample(time="1D").max(dim="time").sum(dim="siteid")
+        sites_per_day = mask.resample(time="1D").max(dim="time").sum(dim=site_dim)
         dust_days = int((sites_per_day >= 3).sum())
 
         # Regional Events: At least 6 sites on the same day
@@ -212,38 +217,12 @@ def build_dashboard(days: int = 90) -> pn.Column:
         ),
     ]
 
-    # Custom Header
-    # Using NOAA Blue palette (#002D62)
-    header = pn.Row(
-        pn.pane.Markdown(
-            "# DustTrace: Wind-Blown Dust Detection",
-            styles={"color": "white", "margin": "10px"},
-        ),
-        styles={"background": "#002D62"},
-        sizing_mode="stretch_width",
-    )
-
-    # Compose Layout with FlexBox for mobile responsiveness
-    # Items will wrap on small screens
-    dashboard = pn.Column(
-        header,
-        pn.FlexBox(
-            pn.Column(
-                *sidebar,
-                width=320,
-                min_width=300,
-                sizing_mode="stretch_height",
-                styles={"background": "#f8f9fa", "padding": "10px"},
-            ),
-            pn.Column(
-                *main,
-                sizing_mode="stretch_both",
-                min_width=320,
-                styles={"padding": "10px"},
-            ),
-            sizing_mode="stretch_both",
-        ),
-        sizing_mode="stretch_both",
+    # Compose Layout using FastListTemplate for responsiveness and toggleable sidebar
+    dashboard = pn.template.FastListTemplate(
+        title="DustTrace: Wind-Blown Dust Detection",
+        sidebar=sidebar,
+        main=main,
+        header_background="#002D62",
     )
 
     return dashboard
@@ -261,6 +240,8 @@ if __name__ == "__main__":
 
     output_path = "docs/index.html"
     print(f"Saving dashboard to {output_path}...")
-    # Using embed=True so the time slider works in the static HTML file
-    db.save(output_path, title="DustTrace Dashboard", embed=True)
+    # We don't use embed=True here because it's not supported for Templates.
+    # The interactive plots use dynamic=False in viz.py, so they will still
+    # have embedded data for the time sliders.
+    db.save(output_path, title="DustTrace Dashboard")
     print("Complete!")

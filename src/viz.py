@@ -162,12 +162,17 @@ def plot_dust_heatmap(
     if hv is None:
         raise ImportError("holoviews and hvplot are required for interactive plotting.")
 
-    # Only show sites that had at least one dust event
-    has_event = ds.DUST.any(dim="time")
-    ds_to_plot = ds.sel(siteid=has_event)
+    # Only show sites that had at least one high-confidence dust event (QC > 1)
+    # to address false alarms. We dynamically find the site dimension.
+    site_dim = "siteid" if "siteid" in ds.dims else "node"
+    has_event = (ds.QC > 1).any(dim="time")
+    ds_to_plot = ds.sel({site_dim: has_event})
 
-    if ds_to_plot.siteid.size == 0:
-        return hv.Div("No dust events detected in this period.")
+    if ds_to_plot[site_dim].size == 0:
+        return hv.Div("No high-confidence dust events detected in this period.")
+
+    # Mask out non-dust and low-confidence pixels (QC <= 1)
+    ds_to_plot[var] = ds_to_plot[var].where(ds_to_plot.QC > 1)
 
     # Convert to dataframe
     # Include DUST and QC for context
@@ -240,16 +245,22 @@ def plot_dust_interactive(
     cols = ["latitude", "longitude", var, "PM10", "Method"]
     available_cols = [c for c in cols if c in ds or c in ds.coords]
 
-    # Filtering sites to reduce size
-    has_event = (ds[var] > 0).any(dim="time")
-    ds_to_plot = ds.sel(siteid=has_event)
+    # Filtering sites to reduce size and address false alarms
+    # Filter for QC > 1 if var is QC. We dynamically find the site dimension.
+    site_dim = "siteid" if "siteid" in ds.dims else "node"
+    mask_val = 1 if var == "QC" else 0
+    has_event = (ds[var] > mask_val).any(dim="time")
+    ds_to_plot = ds.sel({site_dim: has_event})
 
-    if ds_to_plot.siteid.size == 0:
+    if ds_to_plot[site_dim].size == 0:
         ds_to_plot = ds.isel(time=slice(0, 1))
 
     # Convert to dataframe
     df = ds_to_plot[available_cols].to_dataframe().reset_index()
     df["time"] = pd.to_datetime(df["time"])
+
+    # Mask out low-confidence/no-dust points from the map
+    df = df[df[var] > mask_val]
 
     # Ensure higher confidence values are plotted on top
     if var in df.columns:
@@ -260,6 +271,10 @@ def plot_dust_interactive(
     if widget_type == "dropdown" and pn is not None:
         widgets["time"] = pn.widgets.Select
 
+    # Set default clim for QC
+    if var == "QC" and "clim" not in kwargs:
+        kwargs["clim"] = (1, 3)
+
     plot = df.hvplot.points(
         x="longitude",
         y="latitude",
@@ -267,8 +282,10 @@ def plot_dust_interactive(
         geo=True,
         tiles="OSM",
         cmap="autumn_r",
+        colorbar=True,
+        clabel=f"Confidence ({var})",
         logz=logz,
-        hover_cols=["siteid", "time", "PM10", "Method"],
+        hover_cols=[site_dim, "time", "PM10", "Method"],
         title=f"Dust Detection: {var}",
         groupby="time",
         widgets=widgets,
